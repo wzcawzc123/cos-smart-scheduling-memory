@@ -1,0 +1,56 @@
+==HW-FREQ==
+policy0: cpuinfo_min=307200 cpuinfo_max=2016000 boost= driver=qcom-cpufreq-hw
+policy3: cpuinfo_min=499200 cpuinfo_max=2803200 boost=2803200  driver=qcom-cpufreq-hw
+policy7: cpuinfo_min=595200 cpuinfo_max=3187200 boost=3187200  driver=qcom-cpufreq-hw
+==UAG-VALS(policy0)==
+break_freq_margin=20
+cobuck_enable=0
+down_rate_limit_us=0
+hispeed_freq=1344000
+hispeed_load=90
+max_stall_reduce_of_util=5
+multi_tl_enable=1
+multi_tl_sys=95
+reduce_pct_of_stall=70
+report_policy=4
+soft_limit_enable=1
+soft_limit_freq=2016000
+stall_aware=0
+target_loads=80
+up_rate_limit_us=0
+==UAG-VALS(policy7)==
+hispeed_freq=1708800
+hispeed_load=90
+up_rate_limit_us=0
+down_rate_limit_us=0
+target_loads=80 2361600:95
+==CONF-PARAM-CHECK==
+adaptive_high_freq: MISSING
+adaptive_low_freq: MISSING
+boost: MISSING
+pl: MISSING
+target_load_shift: MISSING
+target_load_thresh: MISSING
+hispeed_load: MISSING
+up_rate_limit_us: MISSING
+down_rate_limit_us: MISSING
+==EAS-SYSCTL==
+sched_min_granularity_ns: MISSING
+sched_nr_migrate: MISSING
+sched_wakeup_granularity_ns: MISSING
+sched_schedstats: 1
+sched_boost: MISSING
+==GPU-DEVFREQ==
+available_frequencies available_governors cur_freq device governor gpu_load max_freq min_freq mod_percent name power subsystem suspend_time target_freq trans_stat uevent 
+governor=msm-adreno-tz
+min_freq=124800000
+max_freq=680000000
+cur_freq=220000000
+target_freq=220000000
+available_frequencies=680000000 615000000 550000000 475000000 401000000 348000000 295000000 220000000 124800000
+available_governors=msm-adreno-tz
+==STUNE-CPUCTL2==
+ls: /dev/stune: No such file or directory
+cpuctl.topapp_min=13.00 shares=5120
+==FGAPP-PROOF==
+topPid=3611 cmd=system_server                                                                   
