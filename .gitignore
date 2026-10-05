@@ -1,0 +1,6 @@
+*.docx
+!docs/*.docx
+*.apk
+*.zip
+*.log
+.DS_Store
