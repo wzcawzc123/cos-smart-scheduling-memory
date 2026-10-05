@@ -1,0 +1,582 @@
+10-06 02:06:11 [P0]
+   - P0 min=672000 max=2016000 gov=uag cur=2016000
+   + P0 min=672000 max=1785600 gov=uag cur=1017600
+10-06 02:06:11 [P3]
+   - P3 min=614400 max=2323200 gov=uag cur=2188800
+   + P3 min=614400 max=2803200 gov=uag cur=1785600
+10-06 02:06:11 [P7]
+   - P7 min=864000 max=2956800 gov=uag cur=864000
+   + P7 min=864000 max=3187200 gov=uag cur=864000
+10-06 02:06:17 [P0]
+   - P0 min=672000 max=1785600 gov=uag cur=1017600
+   + P0 min=672000 max=2016000 gov=uag cur=1670400
+10-06 02:06:17 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=1785600
+   + P3 min=614400 max=2803200 gov=uag cur=2803200
+10-06 02:06:23 [P0]
+   - P0 min=672000 max=2016000 gov=uag cur=1670400
+   + P0 min=672000 max=1459200 gov=uag cur=1113600
+10-06 02:06:23 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=2803200 gov=uag cur=940800
+10-06 02:06:28 [P0]
+   - P0 min=672000 max=1459200 gov=uag cur=1113600
+   + P0 min=672000 max=1785600 gov=uag cur=672000
+10-06 02:06:28 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=940800
+   + P3 min=614400 max=2803200 gov=uag cur=1536000
+10-06 02:06:34 [P0]
+   - P0 min=672000 max=1785600 gov=uag cur=672000
+   + P0 min=672000 max=1459200 gov=uag cur=1113600
+10-06 02:06:34 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=1536000
+   + P3 min=614400 max=2803200 gov=uag cur=2803200
+10-06 02:06:40 [P0]
+   - P0 min=672000 max=1459200 gov=uag cur=1113600
+   + P0 min=2016000 max=1785600 gov=uag cur=2016000
+10-06 02:06:40 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2803200
+   + P3 min=844800 max=2323200 gov=uag cur=1536000
+10-06 02:06:40 [P7]
+   - P7 min=864000 max=3187200 gov=uag cur=864000
+   + P7 min=1132800 max=3187200 gov=uag cur=864000
+10-06 02:06:40 [gpu]
+   - gpu: min=124800000 max=680000000 cur=220000000 gov=msm-adreno-tz
+   + gpu: min=124800000 max=680000000 cur=401000000 gov=msm-adreno-tz
+10-06 02:06:40 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [5685]com.android.launcher                                         [10830]com.baidu.input_oppo                                         [11140]com.coloros.assistantscreen                                  
+10-06 02:06:46 [P0]
+   - P0 min=2016000 max=1785600 gov=uag cur=2016000
+   + P0 min=1785600 max=2016000 gov=uag cur=2016000
+10-06 02:06:46 [P3]
+   - P3 min=844800 max=2323200 gov=uag cur=1536000
+   + P3 min=2457600 max=2803200 gov=uag cur=2457600
+10-06 02:06:46 [P7]
+   - P7 min=1132800 max=3187200 gov=uag cur=864000
+   + P7 min=2841600 max=2956800 gov=uag cur=2841600
+10-06 02:06:46 [gpu]
+   - gpu: min=124800000 max=680000000 cur=401000000 gov=msm-adreno-tz
+   + gpu: min=124800000 max=680000000 cur=220000000 gov=msm-adreno-tz
+10-06 02:06:46 [fg]
+   - fg: [3611]system_server                                                [5685]com.android.launcher                                         [10830]com.baidu.input_oppo                                         [11140]com.coloros.assistantscreen                                  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  [22007]kimi-code                               
+10-06 02:06:51 [P0]
+   - P0 min=1785600 max=2016000 gov=uag cur=2016000
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:06:51 [P3]
+   - P3 min=2457600 max=2803200 gov=uag cur=2457600
+   + P3 min=1171200 max=1171200 gov=uag cur=1171200
+10-06 02:06:51 [P7]
+   - P7 min=2841600 max=2956800 gov=uag cur=2841600
+   + P7 min=1132800 max=1132800 gov=uag cur=1132800
+10-06 02:06:57 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=1670400 max=1670400 gov=uag cur=1459200
+10-06 02:06:57 [P3]
+   - P3 min=1171200 max=1171200 gov=uag cur=1171200
+   + P3 min=614400 max=1651200 gov=uag cur=1536000
+10-06 02:06:57 [P7]
+   - P7 min=1132800 max=1132800 gov=uag cur=1132800
+   + P7 min=864000 max=2342400 gov=uag cur=2342400
+10-06 02:07:02 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1459200
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:07:02 [P3]
+   - P3 min=614400 max=1651200 gov=uag cur=1536000
+   + P3 min=614400 max=2054400 gov=uag cur=2054400
+10-06 02:07:02 [P7]
+   - P7 min=864000 max=2342400 gov=uag cur=2342400
+   + P7 min=864000 max=1843200 gov=uag cur=1843200
+10-06 02:07:08 [P3]
+   - P3 min=614400 max=2054400 gov=uag cur=2054400
+   + P3 min=614400 max=1401600 gov=uag cur=1401600
+10-06 02:07:14 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=787200
+10-06 02:07:14 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1401600
+   + P3 min=614400 max=1171200 gov=uag cur=1286400
+10-06 02:07:14 [P7]
+   - P7 min=864000 max=1843200 gov=uag cur=1843200
+   + P7 min=864000 max=1708800 gov=uag cur=864000
+10-06 02:07:14 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  [22007]kimi-code                               
+   + fg: [349] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:19 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=787200
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:07:19 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1286400
+   + P3 min=614400 max=1401600 gov=uag cur=1651200
+10-06 02:07:19 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=864000
+   + P7 min=864000 max=1843200 gov=uag cur=1363200
+10-06 02:07:19 [fg]
+   - fg: [349] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [667] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:25 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:07:25 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1651200
+   + P3 min=614400 max=1171200 gov=uag cur=1171200
+10-06 02:07:25 [P7]
+   - P7 min=864000 max=1843200 gov=uag cur=1363200
+   + P7 min=864000 max=1132800 gov=uag cur=864000
+10-06 02:07:25 [fg]
+   - fg: [667] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [1649] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:31 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=2016000 max=2016000 gov=uag cur=2016000
+10-06 02:07:31 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1171200
+   + P3 min=2803200 max=2803200 gov=uag cur=2803200
+10-06 02:07:31 [P7]
+   - P7 min=864000 max=1132800 gov=uag cur=864000
+   + P7 min=3187200 max=3187200 gov=uag cur=3187200
+10-06 02:07:31 [fg]
+   - fg: [1649] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [2111] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:36 [fg]
+   - fg: [2111] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [2767] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:42 [P0]
+   - P0 min=2016000 max=2016000 gov=uag cur=2016000
+   + P0 min=672000 max=1670400 gov=uag cur=1113600
+10-06 02:07:42 [P3]
+   - P3 min=2803200 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=1171200 gov=uag cur=1171200
+10-06 02:07:42 [P7]
+   - P7 min=3187200 max=3187200 gov=uag cur=3187200
+   + P7 min=864000 max=1708800 gov=uag cur=1363200
+10-06 02:07:42 [fg]
+   - fg: [2767] [3611]system_server                                                [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [4003] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:48 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1113600
+   + P0 min=672000 max=1670400 gov=uag cur=1459200
+10-06 02:07:48 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1171200
+   + P3 min=614400 max=1171200 gov=uag cur=1286400
+10-06 02:07:48 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=1363200
+   + P7 min=864000 max=1363200 gov=uag cur=1248000
+10-06 02:07:48 [fg]
+   - fg: [3611]system_server                                                [4003] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [4634] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:54 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1286400
+   + P3 min=614400 max=1171200 gov=uag cur=1536000
+10-06 02:07:54 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1248000
+   + P7 min=864000 max=1363200 gov=uag cur=1363200
+10-06 02:07:54 [fg]
+   - fg: [3611]system_server                                                [4634] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [4786] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:07:59 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1459200
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:07:59 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1536000
+   + P3 min=614400 max=1401600 gov=uag cur=1171200
+10-06 02:07:59 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1363200
+   + P7 min=864000 max=1363200 gov=uag cur=1977600
+10-06 02:07:59 [fg]
+   - fg: [3611]system_server                                                [4786] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [5452] [5468] [10830]com.baidu.input_oppo                                         
+10-06 02:08:05 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1171200
+   + P3 min=614400 max=1171200 gov=uag cur=1171200
+10-06 02:08:05 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1977600
+   + P7 min=864000 max=1708800 gov=uag cur=1248000
+10-06 02:08:05 [fg]
+   - fg: [3611]system_server                                                [5452] [5468] [10830]com.baidu.input_oppo                                         
+   + fg: [3611]system_server                                                [6269] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:11 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1171200
+   + P3 min=614400 max=1171200 gov=uag cur=1401600
+10-06 02:08:11 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=1248000
+   + P7 min=864000 max=1708800 gov=uag cur=1708800
+10-06 02:08:11 [fg]
+   - fg: [3611]system_server                                                [6269] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [6987] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:17 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1401600
+   + P3 min=614400 max=1286400 gov=uag cur=1286400
+10-06 02:08:17 [fg]
+   - fg: [3611]system_server                                                [6987] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [7495] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:23 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=1344000
+10-06 02:08:23 [P3]
+   - P3 min=614400 max=1286400 gov=uag cur=1286400
+   + P3 min=614400 max=1785600 gov=uag cur=1785600
+10-06 02:08:23 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=1708800
+   + P7 min=864000 max=2342400 gov=uag cur=864000
+10-06 02:08:23 [fg]
+   - fg: [3611]system_server                                                [7495] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [7829] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:29 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1344000
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:08:29 [P3]
+   - P3 min=614400 max=1785600 gov=uag cur=1785600
+   + P3 min=1785600 max=1920000 gov=uag cur=2323200
+10-06 02:08:29 [P7]
+   - P7 min=864000 max=2342400 gov=uag cur=864000
+   + P7 min=864000 max=1977600 gov=uag cur=1478400
+10-06 02:08:29 [fg]
+   - fg: [3611]system_server                                                [7829] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [8288]com.oplus.screenshot                                         [8642] [10830]com.baidu.input_oppo                                         
+10-06 02:08:34 [P3]
+   - P3 min=1785600 max=1920000 gov=uag cur=2323200
+   + P3 min=614400 max=1401600 gov=uag cur=1536000
+10-06 02:08:34 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=1478400
+   + P7 min=864000 max=2092800 gov=uag cur=864000
+10-06 02:08:34 [fg]
+   - fg: [3611]system_server                                                [8288]com.oplus.screenshot                                         [8642] [10830]com.baidu.input_oppo                                         
+   + fg: [3611]system_server                                                [8930] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:41 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:08:41 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1536000
+   + P3 min=614400 max=1536000 gov=uag cur=1171200
+10-06 02:08:41 [P7]
+   - P7 min=864000 max=2092800 gov=uag cur=864000
+   + P7 min=864000 max=1708800 gov=uag cur=864000
+10-06 02:08:41 [fg]
+   - fg: [3611]system_server                                                [8930] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [9617] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:47 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=1459200
+10-06 02:08:47 [P3]
+   - P3 min=614400 max=1536000 gov=uag cur=1171200
+   + P3 min=614400 max=1171200 gov=uag cur=1286400
+10-06 02:08:47 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=864000
+   + P7 min=864000 max=1363200 gov=uag cur=1708800
+10-06 02:08:47 [fg]
+   - fg: [3611]system_server                                                [9617] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [9930] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:53 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1459200
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:08:53 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1286400
+   + P3 min=614400 max=1785600 gov=uag cur=1286400
+10-06 02:08:53 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1708800
+   + P7 min=864000 max=1977600 gov=uag cur=1708800
+10-06 02:08:53 [fg]
+   - fg: [3611]system_server                                                [9930] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10021] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:08:58 [P3]
+   - P3 min=614400 max=1785600 gov=uag cur=1286400
+   + P3 min=614400 max=1401600 gov=uag cur=1171200
+10-06 02:08:58 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=1708800
+   + P7 min=864000 max=1363200 gov=uag cur=1363200
+10-06 02:08:58 [fg]
+   - fg: [3611]system_server                                                [10021] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10369] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+10-06 02:09:04 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1171200
+   + P3 min=614400 max=1651200 gov=uag cur=1401600
+10-06 02:09:04 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1363200
+   + P7 min=864000 max=1977600 gov=uag cur=1132800
+10-06 02:09:04 [fg]
+   - fg: [3611]system_server                                                [10369] [10830]com.baidu.input_oppo                                         [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [11073] [22005]sh -c kimi web --no-open  
+10-06 02:09:10 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:09:10 [P3]
+   - P3 min=614400 max=1651200 gov=uag cur=1401600
+   + P3 min=614400 max=1286400 gov=uag cur=1536000
+10-06 02:09:10 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=1132800
+   + P7 min=864000 max=1977600 gov=uag cur=864000
+10-06 02:09:10 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [11073] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [11704] [22005]sh -c kimi web --no-open  
+10-06 02:09:16 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=864000
+   + P7 min=864000 max=1708800 gov=uag cur=1363200
+10-06 02:09:16 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [11704] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12340] [22005]sh -c kimi web --no-open  
+10-06 02:09:22 [P3]
+   - P3 min=614400 max=1286400 gov=uag cur=1536000
+   + P3 min=614400 max=1785600 gov=uag cur=1785600
+10-06 02:09:22 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=1363200
+   + P7 min=864000 max=1977600 gov=uag cur=864000
+10-06 02:09:22 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12340] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12734] [22005]sh -c kimi web --no-open  
+10-06 02:09:28 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:09:28 [P3]
+   - P3 min=614400 max=1785600 gov=uag cur=1785600
+   + P3 min=614400 max=1536000 gov=uag cur=1401600
+10-06 02:09:28 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=864000
+   + P7 min=864000 max=1708800 gov=uag cur=1478400
+10-06 02:09:28 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12734] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [13306] [22005]sh -c kimi web --no-open  
+10-06 02:09:34 [P3]
+   - P3 min=614400 max=1536000 gov=uag cur=1401600
+   + P3 min=614400 max=1401600 gov=uag cur=2054400
+10-06 02:09:34 [P7]
+   - P7 min=864000 max=1708800 gov=uag cur=1478400
+   + P7 min=864000 max=2476800 gov=uag cur=1843200
+10-06 02:09:34 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [13306] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [13621] [22005]sh -c kimi web --no-open  
+10-06 02:09:40 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=1670400 max=1670400 gov=uag cur=1670400
+10-06 02:09:40 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=2054400
+   + P3 min=614400 max=2323200 gov=uag cur=2323200
+10-06 02:09:40 [P7]
+   - P7 min=864000 max=2476800 gov=uag cur=1843200
+   + P7 min=864000 max=2476800 gov=uag cur=2092800
+10-06 02:09:40 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [13621] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14269] [22005]sh -c kimi web --no-open  
+10-06 02:09:46 [P0]
+   - P0 min=1670400 max=1670400 gov=uag cur=1670400
+   + P0 min=672000 max=1670400 gov=uag cur=1670400
+10-06 02:09:46 [P3]
+   - P3 min=614400 max=2323200 gov=uag cur=2323200
+   + P3 min=614400 max=1651200 gov=uag cur=1920000
+10-06 02:09:46 [P7]
+   - P7 min=864000 max=2476800 gov=uag cur=2092800
+   + P7 min=864000 max=1977600 gov=uag cur=1977600
+10-06 02:09:46 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14269] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14691] [22005]sh -c kimi web --no-open  
+10-06 02:09:52 [P3]
+   - P3 min=614400 max=1651200 gov=uag cur=1920000
+   + P3 min=614400 max=1171200 gov=uag cur=1651200
+10-06 02:09:52 [P7]
+   - P7 min=864000 max=1977600 gov=uag cur=1977600
+   + P7 min=864000 max=2342400 gov=uag cur=2092800
+10-06 02:09:52 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14691] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14964] [22005]sh -c kimi web --no-open  
+10-06 02:09:57 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1651200
+   + P3 min=614400 max=1171200 gov=uag cur=1171200
+10-06 02:09:57 [P7]
+   - P7 min=864000 max=2342400 gov=uag cur=2092800
+   + P7 min=864000 max=1363200 gov=uag cur=1248000
+10-06 02:09:57 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [14964] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [15245] [22005]sh -c kimi web --no-open  
+10-06 02:10:03 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1248000
+   + P7 min=864000 max=1363200 gov=uag cur=1363200
+10-06 02:10:03 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [15245] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [15715] [22005]sh -c kimi web --no-open  
+10-06 02:10:09 [P3]
+   - P3 min=614400 max=1171200 gov=uag cur=1171200
+   + P3 min=614400 max=1401600 gov=uag cur=1286400
+10-06 02:10:09 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1363200
+   + P7 min=864000 max=1363200 gov=uag cur=1132800
+10-06 02:10:09 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [15715] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [16124] [22005]sh -c kimi web --no-open  
+10-06 02:10:15 [P3]
+   - P3 min=614400 max=1401600 gov=uag cur=1286400
+   + P3 min=614400 max=1286400 gov=uag cur=1171200
+10-06 02:10:15 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1132800
+   + P7 min=864000 max=1363200 gov=uag cur=1363200
+10-06 02:10:15 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [16124] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [16618] [22005]sh -c kimi web --no-open  
+10-06 02:10:21 [P0]
+   - P0 min=672000 max=1670400 gov=uag cur=1670400
+   + P0 min=1344000 max=2016000 gov=uag cur=2016000
+10-06 02:10:21 [P3]
+   - P3 min=614400 max=1286400 gov=uag cur=1171200
+   + P3 min=614400 max=2054400 gov=uag cur=2188800
+10-06 02:10:21 [P7]
+   - P7 min=864000 max=1363200 gov=uag cur=1363200
+   + P7 min=864000 max=2592000 gov=uag cur=2476800
+10-06 02:10:21 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [16618] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [17298]sh -c printf '%s group
+10-06 02:10:27 [P0]
+   - P0 min=1344000 max=2016000 gov=uag cur=2016000
+   + P0 min=2016000 max=2016000 gov=uag cur=2016000
+10-06 02:10:27 [P3]
+   - P3 min=614400 max=2054400 gov=uag cur=2188800
+   + P3 min=844800 max=2054400 gov=uag cur=2054400
+10-06 02:10:27 [P7]
+   - P7 min=864000 max=2592000 gov=uag cur=2476800
+   + P7 min=1132800 max=3187200 gov=uag cur=1132800
+10-06 02:10:27 [gpu]
+   - gpu: min=124800000 max=680000000 cur=220000000 gov=msm-adreno-tz
+   + gpu: min=124800000 max=680000000 cur=295000000 gov=msm-adreno-tz
+10-06 02:10:27 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [17298]sh -c printf '%s group
+   + fg: [3611]system_server                                                [5685]com.android.launcher                                         [10830]com.baidu.input_oppo                                         [11140]com.coloros.assistantscreen                                  
+10-06 02:10:33 [P3]
+   - P3 min=844800 max=2054400 gov=uag cur=2054400
+   + P3 min=1785600 max=2323200 gov=uag cur=2054400
+10-06 02:10:33 [P7]
+   - P7 min=1132800 max=3187200 gov=uag cur=1132800
+   + P7 min=1977600 max=2476800 gov=uag cur=2476800
+10-06 02:10:33 [gpu]
+   - gpu: min=124800000 max=680000000 cur=295000000 gov=msm-adreno-tz
+   + gpu: min=124800000 max=680000000 cur=220000000 gov=msm-adreno-tz
+10-06 02:10:33 [fg]
+   - fg: [3611]system_server                                                [5685]com.android.launcher                                         [10830]com.baidu.input_oppo                                         [11140]com.coloros.assistantscreen                                  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [18813] [22005]sh -c kimi web --no-open  
+10-06 02:10:38 [P0]
+   - P0 min=2016000 max=2016000 gov=uag cur=2016000
+   + P0 min=1344000 max=1785600 gov=uag cur=1785600
+10-06 02:10:38 [P3]
+   - P3 min=1785600 max=2323200 gov=uag cur=2054400
+   + P3 min=614400 max=2803200 gov=uag cur=1785600
+10-06 02:10:38 [P7]
+   - P7 min=1977600 max=2476800 gov=uag cur=2476800
+   + P7 min=864000 max=3187200 gov=uag cur=864000
+10-06 02:10:38 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [18813] [22005]sh -c kimi web --no-open  
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [19433] 
+10-06 02:10:44 [P0]
+   - P0 min=1344000 max=1785600 gov=uag cur=1785600
+   + P0 min=672000 max=2016000 gov=uag cur=1459200
+10-06 02:10:44 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=1785600
+   + P3 min=614400 max=2803200 gov=uag cur=2188800
+10-06 02:10:44 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [19433] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [19814] 
+10-06 02:10:50 [P0]
+   - P0 min=672000 max=2016000 gov=uag cur=1459200
+   + P0 min=1344000 max=1785600 gov=uag cur=1228800
+10-06 02:10:50 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2188800
+   + P3 min=614400 max=2803200 gov=uag cur=2803200
+10-06 02:10:50 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [19814] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20184] 
+10-06 02:10:56 [P0]
+   - P0 min=1344000 max=1785600 gov=uag cur=1228800
+   + P0 min=1344000 max=2016000 gov=uag cur=2016000
+10-06 02:10:56 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=2592000 gov=uag cur=2592000
+10-06 02:10:56 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20184] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20358] 
+10-06 02:11:01 [P0]
+   - P0 min=1344000 max=2016000 gov=uag cur=2016000
+   + P0 min=672000 max=1459200 gov=uag cur=1017600
+10-06 02:11:01 [P3]
+   - P3 min=614400 max=2592000 gov=uag cur=2592000
+   + P3 min=614400 max=2803200 gov=uag cur=844800
+10-06 02:11:01 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20358] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20798] 
+10-06 02:11:07 [P0]
+   - P0 min=672000 max=1459200 gov=uag cur=1017600
+   + P0 min=1017600 max=2016000 gov=uag cur=1017600
+10-06 02:11:07 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=844800
+   + P3 min=844800 max=2803200 gov=uag cur=2803200
+10-06 02:11:07 [P7]
+   - P7 min=864000 max=3187200 gov=uag cur=864000
+   + P7 min=1132800 max=3187200 gov=uag cur=1132800
+10-06 02:11:07 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [20798] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [21315] 
+10-06 02:11:13 [P0]
+   - P0 min=1017600 max=2016000 gov=uag cur=1017600
+   + P0 min=2016000 max=2016000 gov=uag cur=1459200
+10-06 02:11:13 [P3]
+   - P3 min=844800 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=2803200 gov=uag cur=2803200
+10-06 02:11:13 [P7]
+   - P7 min=1132800 max=3187200 gov=uag cur=1132800
+   + P7 min=864000 max=3187200 gov=uag cur=864000
+10-06 02:11:13 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [21315] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [21702] 
+10-06 02:11:19 [P0]
+   - P0 min=2016000 max=2016000 gov=uag cur=1459200
+   + P0 min=672000 max=2016000 gov=uag cur=672000
+10-06 02:11:19 [fg]
+   - fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [21702] 
+   + fg: [3611]system_server                                                [10830]com.baidu.input_oppo                                         [12020]io.github.mangi.eta                                          [22005]sh -c kimi web --no-open  
+10-06 02:11:25 [P0]
+   - P0 min=672000 max=2016000 gov=uag cur=672000
+   + P0 min=1344000 max=1459200 gov=uag cur=1459200
+10-06 02:11:25 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2803200
+   + P3 min=844800 max=2803200 gov=uag cur=940800
+10-06 02:11:30 [P0]
+   - P0 min=1344000 max=1459200 gov=uag cur=1459200
+   + P0 min=1017600 max=1459200 gov=uag cur=2016000
+10-06 02:11:30 [P3]
+   - P3 min=844800 max=2803200 gov=uag cur=940800
+   + P3 min=844800 max=2803200 gov=uag cur=2803200
+10-06 02:11:30 [P7]
+   - P7 min=864000 max=3187200 gov=uag cur=864000
+   + P7 min=1132800 max=3187200 gov=uag cur=864000
+10-06 02:11:36 [P0]
+   - P0 min=1017600 max=1459200 gov=uag cur=2016000
+   + P0 min=2016000 max=2016000 gov=uag cur=2016000
+10-06 02:11:36 [P3]
+   - P3 min=844800 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=2054400 gov=uag cur=2054400
+10-06 02:11:36 [P7]
+   - P7 min=1132800 max=3187200 gov=uag cur=864000
+   + P7 min=864000 max=3187200 gov=uag cur=864000
+10-06 02:11:42 [P0]
+   - P0 min=2016000 max=2016000 gov=uag cur=2016000
+   + P0 min=672000 max=2016000 gov=uag cur=2016000
+10-06 02:11:42 [P3]
+   - P3 min=614400 max=2054400 gov=uag cur=2054400
+   + P3 min=614400 max=2323200 gov=uag cur=2457600
+10-06 02:11:48 [P0]
+   - P0 min=672000 max=2016000 gov=uag cur=2016000
+   + P0 min=672000 max=1785600 gov=uag cur=1785600
+10-06 02:11:48 [P3]
+   - P3 min=614400 max=2323200 gov=uag cur=2457600
+   + P3 min=614400 max=2803200 gov=uag cur=2803200
+10-06 02:11:53 [P0]
+   - P0 min=672000 max=1785600 gov=uag cur=1785600
+   + P0 min=672000 max=1785600 gov=uag cur=1459200
+10-06 02:11:53 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=2803200
+   + P3 min=614400 max=2803200 gov=uag cur=1785600
+10-06 02:11:59 [P0]
+   - P0 min=672000 max=1785600 gov=uag cur=1459200
+   + P0 min=672000 max=2016000 gov=uag cur=1113600
+10-06 02:11:59 [P3]
+   - P3 min=614400 max=2803200 gov=uag cur=1785600
+   + P3 min=614400 max=2803200 gov=uag cur=1171200
+10-06 02:11:59 [cpuset]
+   - cpuset: top-app=0-7 foreground=0-7 background=0-2 system-background=0-2 restricted=0-7 display=4-7 sf=0-7 oiface_fg=3-6 
+   + cpuset: top-app=0-7 Terminated 
