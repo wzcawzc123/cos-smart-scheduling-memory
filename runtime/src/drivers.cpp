@@ -1,4 +1,4 @@
-// UnifiedRootOptimizer M1 — driver 实现
+// UnifiedRootOptimizer M1 — driver 实现 v2 (resolver: ResumedActivity 同源语义)
 #include "drivers.hpp"
 #include <sys/inotify.h>
 #include <sys/system_properties.h>
@@ -28,8 +28,8 @@ static std::string trim(const std::string& s) {
     auto b = s.find_last_not_of(" \t\r\n"); return s.substr(a, b - a + 1);
 }
 
-// top-app 里挑出"最像前台应用"的包名：非 '/' 开头、含 '.'、排除 system_server，取 pid 最大者
-static std::string resolve_foreground(const std::string& cgroupProcs) {
+// cgroup 启发式（v1，留作 dumpsys 失败时的兜底）
+static std::string resolve_by_cgroup(const std::string& cgroupProcs) {
     std::ifstream f(cgroupProcs); std::string best; long bestPid = -1;
     long pid;
     while (f >> pid) {
@@ -45,9 +45,35 @@ static std::string resolve_foreground(const std::string& cgroupProcs) {
     return best;
 }
 
+// v2: 与 handleTopAppChanged 同源 —— 解析 ResumedActivity（事件级 fork，25 次/h 成本可忽略）
+static std::string resolve_foreground(const std::string& cgroupProcs) {
+    FILE* fp = popen("dumpsys activity activities 2>/dev/null | grep -m1 -E 'ResumedActivity|mResumedActivity'", "r");
+    std::string pkg;
+    if (fp) {
+        char line[1024] = {0};
+        if (fgets(line, sizeof line, fp)) {
+            std::string s(line);
+            auto pos = s.find("u0 ");          // "... u0 com.pkg/.Act t123}"
+            if (pos != std::string::npos) {
+                pos += 3;
+                auto end = s.find_first_of(" \t}", pos);
+                std::string tok = s.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+                auto slash = tok.find('/');
+                pkg = (slash == std::string::npos) ? tok : tok.substr(0, slash);
+            }
+        }
+        pclose(fp);
+    }
+    if (pkg.empty() || pkg.find('.') == std::string::npos || pkg[0] == '/')
+        return resolve_by_cgroup(cgroupProcs);   // 兜底
+    return pkg;
+}
+
 // ---------- A. ForegroundChanged ----------
 void fg_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
-    std::string last;
+    std::string last = resolve_foreground(p.topAppCpuset);   // bootstrap 初态
+    if (!last.empty())
+        q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-boot", last});
     while (run) {
         int fd = inotify_init1(IN_NONBLOCK);
         if (fd < 0) { q.push({EventType::ControllerFault, now_ms(), 0, "fg-inotify", "inotify_init fail"}); sleep(5); continue; }
@@ -60,8 +86,8 @@ void fg_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
         while (run) {
             int n = read(fd, buf, sizeof buf);
             if (n > 0) {
-                usleep(500 * 1000);          // 防抖（沿用 CT 实证参数）
-                while (read(fd, buf, sizeof buf) > 0) {}   // 排空
+                usleep(300 * 1000);          // v2: 防抖 500→300ms
+                while (read(fd, buf, sizeof buf) > 0) {}
                 std::string fg = resolve_foreground(p.topAppCpuset);
                 if (!fg.empty() && fg != last) {
                     last = fg;
@@ -84,7 +110,9 @@ void mode_config_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
             q.push({EventType::ControllerFault, now_ms(), 0, "cfg-inotify", "no watchable config dir"});
             close(fd); sleep(10); continue;
         }
-        std::string lastMode;
+        std::string lastMode = trim(read_all(p.modeFile));   // bootstrap 初态
+        if (!lastMode.empty())
+            q.push({EventType::ModeChanged, now_ms(), 0, "cfg-boot", lastMode});
         char buf[8192];
         while (run) {
             int n = read(fd, buf, sizeof buf);
@@ -140,7 +168,7 @@ void sampler_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
     }
 }
 
-// ---------- D. ScreenChanged（property 零 fork；prop 缺失 → DEGRADED 一次） ----------
+// ---------- D. ScreenChanged（property 零 fork；缺失 → DEGRADED 一次） ----------
 void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
     const prop_info* pi = __system_property_find("debug.tracing.screen_state");
     if (!pi) {
@@ -153,12 +181,12 @@ void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
         char name[PROP_NAME_MAX] = {0}, val[PROP_VALUE_MAX] = {0};
         __system_property_read(pi, name, val);
         int raw = atoi(val);
-        int st = (raw == 0) ? 0 : 1;    // -1 视为亮（保守，同 CT）
+        int st = (raw == 0) ? 0 : 1;
         if (st != last) {
             if (last != -2) q.push({EventType::ScreenChanged, now_ms(), 0, "screen-prop", st ? "on" : "off"});
             last = st;
         }
-        usleep((st ? 1000 : 2000) * 1000);   // 熄屏加倍（CT 同款）
+        usleep((st ? 1000 : 2000) * 1000);
     }
 }
 
