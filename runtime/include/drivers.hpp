@@ -1,10 +1,12 @@
-// UnifiedRootOptimizer M1 — 四大事件驱动源 (收敛图 §3.1)
+// UnifiedRootOptimizer — 事件驱动源 (收敛图 §3.1) + M2 焦点补盲扳机
 // 全部只读采集，SHADOW 模式：不写任何系统节点
 #pragma once
 #include "event.hpp"
 #include <atomic>
 #include <thread>
+#include <mutex>
 #include <string>
+#include <memory>
 
 namespace uro {
 
@@ -17,10 +19,30 @@ struct DriverPaths {
     long memFloorMb          = 1024;
     int  pressureCooldownSec = 60;
     int  pollIntervalMs      = 5000;
+    int  focusPollMs         = 1000; // 焦点巡检间隔（dumpsys window 单次实测 14-20ms）
 };
 
-// A. 前台 App：inotify top-app + 500ms 防抖 + 包名解析
-void fg_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run);
+// 前台状态共享：inotify 与 focus 两扳机在此去重，谁先到谁发事件
+struct FgShared {
+    std::mutex m;
+    std::string pkg;                       // last-known 前台包名
+    bool publish(const std::string& p) {   // true = 新状态，调用方应发事件
+        std::lock_guard<std::mutex> lk(m);
+        if (p == pkg) return false;
+        pkg = p;
+        return true;
+    }
+    std::string get() {
+        std::lock_guard<std::mutex> lk(m);
+        return pkg;
+    }
+};
+using FgSharedPtr = std::shared_ptr<FgShared>;
+
+// A. 前台 App（主扳机）：inotify top-app + 300ms 防抖 + ResumedActivity 解析
+void fg_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run);
+// A'. 前台 App（补盲扳机）：mCurrentFocus 低频巡检 —— 补 inotify 的 systemui 盲区
+void focus_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run);
 // B. 模式/配置：inotify 目录（mode.txt 写入 → ModeChanged；其他配置文件 → ConfigChanged）
 void mode_config_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run);
 // C. 阈值采样：PSI/MemAvailable 越阈值才发 + 充电状态翻转

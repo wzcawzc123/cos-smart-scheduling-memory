@@ -69,10 +69,10 @@ static std::string resolve_foreground(const std::string& cgroupProcs) {
     return pkg;
 }
 
-// ---------- A. ForegroundChanged ----------
-void fg_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
+// ---------- A. ForegroundChanged（主扳机：inotify top-app） ----------
+void fg_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
     std::string last = resolve_foreground(p.topAppCpuset);   // bootstrap 初态
-    if (!last.empty())
+    if (!last.empty() && fg->publish(last))
         q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-boot", last});
     while (run) {
         int fd = inotify_init1(IN_NONBLOCK);
@@ -86,16 +86,60 @@ void fg_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
         while (run) {
             int n = read(fd, buf, sizeof buf);
             if (n > 0) {
-                usleep(300 * 1000);          // v2: 防抖 500→300ms
+                usleep(300 * 1000);          // 防抖 300ms（v2 参数）
                 while (read(fd, buf, sizeof buf) > 0) {}
-                std::string fg = resolve_foreground(p.topAppCpuset);
-                if (!fg.empty() && fg != last) {
-                    last = fg;
-                    q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-inotify", fg});
-                }
+                std::string now = resolve_foreground(p.topAppCpuset);
+                if (!now.empty() && fg->publish(now))
+                    q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-inotify", now});
             } else { usleep(200 * 1000); }
         }
         close(fd);
+    }
+}
+
+// ---------- A'. ForegroundChanged（补盲扳机：mCurrentFocus 巡检） ----------
+// 修 M1 影子对账 v2 §2-A1：systemui 常驻 top-app cgroup，下拉通知栏/锁屏时
+// cgroup 成员无变化 -> inotify 永不触发（22 条直接 missed + 8 条恢复事件下游）。
+// dumpsys window 单次实测 14-20ms，1s 巡检的常驻成本约 2% 单核占空。
+static std::string read_focus_raw() {
+    FILE* fp = popen("dumpsys window 2>/dev/null | grep -m1 'mCurrentFocus='", "r");
+    std::string line;
+    if (fp) {
+        char buf[512];
+        if (fgets(buf, sizeof buf, fp)) line = buf;
+        pclose(fp);
+    }
+    return line;
+}
+
+// 焦点串 -> 包名。只认有包名结构的窗口，其余（null / PopupWindow / Pop-Up Window /
+// ActionsDialog 等无包名值）返回空 = 本巡检周期不改变状态，保持 last-known。
+static std::string pkg_from_focus(const std::string& raw) {
+    // systemui 专属无点窗口名 -> 归一为真值同款包名
+    for (const char* w : {"NotificationShade", "StatusBar", "NavigationBar", "Keyguard"})
+        if (raw.find(w) != std::string::npos) return "com.android.systemui";
+    auto u = raw.find("u0 ");                 // "Window{hash u0 com.pkg/com.act}"
+    if (u == std::string::npos) return "";
+    u += 3;
+    auto end = raw.find_first_of(" \t}", u);
+    std::string tok = raw.substr(u, end == std::string::npos ? std::string::npos : end - u);
+    auto slash = tok.find('/');
+    if (slash != std::string::npos) tok = tok.substr(0, slash);
+    if (tok.empty() || tok.find('.') == std::string::npos || tok[0] == '/') return "";
+    return tok;
+}
+
+void focus_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
+    std::string lastRaw;   // 本源上次看到的原始焦点串（避免每个周期都解析）
+    while (run) {
+        std::string raw = read_focus_raw();
+        if (!raw.empty() && raw != lastRaw) {
+            lastRaw = raw;
+            std::string pkg = pkg_from_focus(raw);
+            if (!pkg.empty() && fg->publish(pkg))
+                q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-focus", pkg});
+        }
+        for (int i = 0; run && i < p.focusPollMs / 100; ++i) usleep(100 * 1000);
     }
 }
 
