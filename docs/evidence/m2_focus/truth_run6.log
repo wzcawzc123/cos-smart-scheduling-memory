@@ -19,3 +19,37 @@
          1791372296.549  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
          1791372414.482  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
          1791372423.684  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372430.465  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372434.148  3630  4413 I UserAwareMgr: handleTopAppChanged: com.tencent.mm, pid: 16994, uid: 10460
+         1791372437.938  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372440.531  3630  4413 I UserAwareMgr: handleTopAppChanged: ai.x.grok, pid: 20871, uid: 10375
+         1791372750.953  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372752.178  3630  4413 I UserAwareMgr: handleTopAppChanged: com.tencent.mm, pid: 16994, uid: 10460
+         1791372752.915  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372753.868  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372756.982  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
+         1791372803.381  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372803.491  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372863.976  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
+         1791372871.909  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372872.885  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372874.812  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791372882.226  3630  4413 I UserAwareMgr: handleTopAppChanged: ai.x.grok, pid: 20871, uid: 10375
+         1791372915.584  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791372922.604  3630  4413 I UserAwareMgr: handleTopAppChanged: com.ss.android.ugc.aweme, pid: 13158, uid: 10459
+         1791373042.660  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791373044.009  3630  4413 I UserAwareMgr: handleTopAppChanged: ai.x.grok, pid: 20871, uid: 10375
+         1791373045.581  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373045.654  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373078.740  3630  4413 I UserAwareMgr: handleTopAppChanged: ai.x.grok, pid: 20871, uid: 10375
+         1791373082.599  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.launcher, pid: 5683, uid: 10229
+         1791373084.152  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
+         1791373225.376  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373225.460  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373289.252  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
+         1791373531.933  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373532.006  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373601.392  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
+         1791373739.672  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373739.759  3630  4413 I UserAwareMgr: handleTopAppChanged: com.android.systemui, pid: 5382, uid: 10236
+         1791373744.715  3630  4413 I UserAwareMgr: handleTopAppChanged: io.github.mangi.eta, pid: 12296, uid: 10368
