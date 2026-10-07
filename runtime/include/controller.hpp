@@ -94,17 +94,22 @@ public:
 
     // 求交全部 Active Controller 的约束；Degraded/Faulted 的不参与
     EffectivePolicy resolve(uint64_t generation) const {
-        EffectivePolicy acc;
+        return resolve(EffectivePolicy{}, generation);
+    }
+
+    // 求交：以场景策略为基底（PolicyManager 的 tactics），叠加各 Active Controller 的约束。
+    // Degraded/Faulted 的不参与。Handover（GAME 让权）时基底已标 handover，
+    // 调用方据此跳过 apply —— §5.5 全量让权，本框架零写入。
+    EffectivePolicy resolve(const EffectivePolicy& base, uint64_t generation) const {
+        EffectivePolicy acc = base;
         acc.generation = generation;
-        bool first = true;
         for (auto& c : ctrls_) {
             if (c->state() == CtrlState::Degraded || c->state() == CtrlState::Faulted)
                 continue;
             EffectivePolicy d = c->desire();
-            if (first) { acc = d; acc.generation = generation; first = false; }
-            else       { acc = intersect(acc, d); }
+            acc = intersect(acc, d);
+            acc.generation = generation;
         }
-        if (!first) acc.generation = generation;
         return acc;
     }
 

@@ -4,6 +4,7 @@
 #include "state.hpp"
 #include "drivers.hpp"
 #include "controller.hpp"
+#include "policy_manager.hpp"
 #include <csignal>
 #include <cstring>
 #include <fstream>
@@ -77,6 +78,10 @@ int main(int argc, char** argv) {
     }
     fprintf(stderr, "[URO-M2′] dryRun=1 (SHADOW — 不写任何系统节点)\n");
 
+    // ---- M3 PolicyManager：场景判定 + generation + lease ----
+    PolicyManager pm;
+    pm.set_game_list_path(std::string(logdir) + "/game_apps.txt");
+
     std::thread t1(fg_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t5(focus_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t2(mode_config_driver, std::ref(q), p, std::ref(g_run));
@@ -86,40 +91,70 @@ int main(int argc, char** argv) {
     Event e;
     EffectivePolicy lastApplied;
     bool appliedOnce = false;
+
+    // ---- 策略执行单元（事件驱动与租约回落共用；§3.4 写完即走）----
+    auto run_policy = [&](const Event& ev, uint64_t now) {
+        Decision dec = pm.decide(st, ev, now);
+        pm.note_lease(dec.leaseUntilMs);
+        if (!dec.changed) return;
+
+        EffectivePolicy base;
+        base.memory.reclaimEnabled  = dec.tactics.reclaimEnabled;
+        base.memory.freezeEnabled   = dec.tactics.freezeEnabled;
+        base.memory.maxKillPerRound = dec.tactics.maxKillPerRound;
+        base.cpu.maxFreq = dec.tactics.cpuClamp ? dec.tactics.maxFreqKhz : -1;
+        EffectivePolicy eff = reg.resolve(base, dec.generation);
+
+        char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};
+        localtime_r(&s, &tv); strftime(ts, sizeof ts, "%F %T", &tv);
+        plog.line(std::string(ts) + " SCENARIO=" + scenario_name(dec.scenario) +
+                  " gen=" + std::to_string(dec.generation) +
+                  " handover=" + (dec.tactics.handover ? "1" : "0") +
+                  " why=" + dec.why);
+
+        if (dec.tactics.handover) {
+            // §5.5 全量让权：本框架零写入，降级为观察者
+            plog.line("  HANDOVER — zero writes (control handed to GameAssistant/kernel)");
+            lastApplied = EffectivePolicy{};
+            appliedOnce = true;
+            return;
+        }
+        if (appliedOnce && !materially_different(eff, lastApplied)) return;  // 幂等
+
+        auto reps = reg.apply_all(eff, ad, /*dryRun=*/true);   // SHADOW：永不落盘
+        std::string l = std::string(ts) + " APPLY gen=" + std::to_string(eff.generation) +
+                        " maxFreq=" + std::to_string(eff.cpu.maxFreq) +
+                        " reclaim=" + (eff.memory.reclaimEnabled ? "1" : "0") +
+                        " freeze=" + (eff.memory.freezeEnabled ? "1" : "0") +
+                        " maxKill=" + std::to_string(eff.memory.maxKillPerRound);
+        for (size_t i = 0; i < reps.size() && i < reg.size(); ++i)
+            l += " [" + std::string(reg.at(i).name()) + "=" + ctrl_state_name(reps[i].state) + "]";
+        plog.line(l);
+        for (auto& t : ad.traces())
+            plog.line("  TRACE " + t.op + " " + t.path + " -> " + t.result +
+                      (t.detail.empty() ? "" : " | " + t.detail));
+        ad.clear_traces();
+        appliedOnce = true;
+        lastApplied = eff;
+    };
+
     while (g_run) {
-        if (!q.pop(e, 500)) continue;
+        if (!q.pop(e, 500)) {
+            // 空闲 tick：只做租约到期判断（读时钟，非写入轮询；§4.4 TTL 回落）
+            if (pm.lease_expired(now_ms())) {
+                pm.set_pressure_time(0);            // 压力租约过期 → 清压力态
+                run_policy(e, now_ms());            // 重新决策 → 回落 DAILY/POWERSAVE
+                plog.line("LEASE expired -> scenario fallback");
+            }
+            continue;
+        }
         bool changed = sm.apply(e, st);
         e.generation = st.generation;
         e.ts_ms = e.ts_ms ? e.ts_ms : now_ms();
 
-        // ---- M2′：事件广播给各 Controller ----
         for (size_t i = 0; i < reg.size(); ++i) reg.at(i).on_event(e, st);
-
-        // ---- 策略边界（§3.4 写完即走）：状态跃迁且策略实质变化才 apply ----
-        if (changed) {
-            EffectivePolicy eff = reg.resolve(st.generation);
-            if (!appliedOnce || materially_different(eff, lastApplied)) {
-                auto reps = reg.apply_all(eff, ad, /*dryRun=*/true);   // SHADOW：永不落盘
-                char ts2[32]; time_t s2 = e.ts_ms / 1000; struct tm tv2{};
-                localtime_r(&s2, &tv2); strftime(ts2, sizeof ts2, "%F %T", &tv2);
-                std::string l = std::string(ts2) + " APPLY gen=" +
-                                std::to_string(eff.generation) +
-                                " maxFreq=" + std::to_string(eff.cpu.maxFreq) +
-                                " reclaim=" + (eff.memory.reclaimEnabled ? "1" : "0") +
-                                " freeze=" + (eff.memory.freezeEnabled ? "1" : "0");
-                for (size_t i = 0; i < reps.size() && i < reg.size(); ++i)
-                    l += " [" + std::string(reg.at(i).name()) + "=" +
-                         ctrl_state_name(reps[i].state) + "]";
-                plog.line(l);
-                // 逐条 write 意图 + outcome（SHADOW 验收底线：此处应全为 DRYRUN）
-                for (auto& t : ad.traces())
-                    plog.line("  TRACE " + t.op + " " + t.path + " -> " + t.result +
-                              (t.detail.empty() ? "" : " | " + t.detail));
-                ad.clear_traces();
-                appliedOnce = true;
-                lastApplied = eff;
-            }
-        }
+        if (e.type == EventType::MemoryPressureChanged) pm.set_pressure_time(e.ts_ms);
+        run_policy(e, e.ts_ms);
 
         char ts[32];
         time_t s = e.ts_ms / 1000; struct tm tmv{};
