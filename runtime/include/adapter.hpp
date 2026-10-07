@@ -50,6 +50,9 @@ public:
     // 读首行（trim 后）；失败返回 nullopt
     std::optional<std::string> read(const std::string& relPath) const;
 
+    // 读全部内容（trim 尾部空白）；用于多行目标（如 JSON）的 readback 校验
+    std::optional<std::string> read_all(const std::string& relPath) const;
+
     // 写入 + readback 校验。dryRun=true 只记录不落盘（SHADOW 铁律）。
     WriteOutcome write(const std::string& relPath, const std::string& value,
                        bool dryRun, std::string* detail = nullptr) const;

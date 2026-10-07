@@ -30,8 +30,9 @@ static CtrlReport fold(const std::vector<NodeCap>& caps, const char* what) {
 class MemoryController final : public Controller {
 public:
     // policyFile 为空 → 相对 ad 根（测试 fake sysfs）；否则用注入的绝对路径
-    explicit MemoryController(std::string policyFile = "")
-        : policyFile_(std::move(policyFile)) {}
+    // cmosJson 为空 → 不启用 COSMemory 桥接（能力降级）
+    explicit MemoryController(std::string policyFile = "", std::string cmosJson = "")
+        : policyFile_(std::move(policyFile)), cmosJson_(std::move(cmosJson)) {}
 
     const char* name() const override { return "memory"; }
 
@@ -52,6 +53,24 @@ public:
                 r_.detail = "policy target dir not writable: " + parent;
             }
         }
+        // ---- COSMemory 桥接能力探测（§5.1）----
+        // 桥接文件缺失/不可读 → 桥接能力降级，但主 Controller 仍可 Active（策略快照照写）
+        if (!cmosJson_.empty()) {
+            NodeCap cj = ad.probe(cmosJson_);
+            if (!cj.exists || !cj.readable) {
+                bridge_ = false;
+                bridgeWhy_ = "cosmem json unavailable: " + cj.path + " " + cj.reason;
+            } else {
+                bridge_ = true;
+                // 读基线 aggressive（首次）：URO 只在场景需要时偏离，退出必须恢复基线
+                auto cur = read_aggressive(ad);
+                if (cur.has_value()) baselineAgg_ = *cur;
+            }
+            if (r_.state == CtrlState::Active && !bridge_) {
+                r_.detail = (r_.detail.empty() ? "" : r_.detail + "; ") + bridgeWhy_;
+                // 不降级整个 Controller——快照写入仍可用，仅桥接能力缺失
+            }
+        }
         state_ = r_.state;
         return r_;
     }
@@ -64,13 +83,11 @@ public:
     }
 
     EffectivePolicy desire() const override {
-        EffectivePolicy d;
-        bool perf = (mode_ == "performance" || mode_ == "game");
-        d.memory.reclaimEnabled = !perf || pressured_;
-        d.memory.freezeEnabled  = (mode_ == "powersave") || pressured_;
-        d.memory.maxKillPerRound = pressured_ ? 5 : (mode_ == "powersave" ? 3 : 0);
-        d.memory.protectedAdj = 0;
-        return d;
+        // 职责分离（M3）：reclaim/freeze/maxKill 是**场景决策**，由 PolicyManager 经
+        // resolve(base) 注入；Controller 若重复表达，会被 intersect 的 OR 合并顶回，
+        // 出现"场景要求暂停回收、Controller 要求回收"的互相覆盖（§9 退出条件反例）。
+        // 此处只返回空基底，约束维度由 CpuController 等硬件侧提供。
+        return EffectivePolicy{};
     }
 
     CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun) override {
@@ -85,7 +102,33 @@ public:
         if (o == WriteOutcome::Missing || o == WriteOutcome::Denied) {
             r.state = CtrlState::Degraded;
             r.detail = "policy target unavailable — memory class skipped: " + detail;
+            state_ = r.state;
+            last_ = r.detail;
+            return r;
         }
+
+        // ---- COSMemory 桥接（§5.1）：reclaim.aggressive 是引擎每轮热读的开关 ----
+        // 语义（防"互相覆盖"，§9 退出条件）：
+        //   reclaimEnabled=false            → 强制 false（GAME/BOOT 主动暂停回收）
+        //   reclaimEnabled && maxKill>0     → true（压力/省电场景要求激进）
+        //   reclaimEnabled && maxKill==0    → 恢复用户基线（常规态不干预面板配置）
+        if (bridge_ && !cmosJson_.empty()) {
+            bool target;
+            if (!eff.memory.reclaimEnabled)      target = false;
+            else if (eff.memory.maxKillPerRound > 0) target = true;
+            else                                 target = baselineAgg_;
+            std::string bdet;
+            WriteOutcome bo = set_aggressive(ad, target, dryRun, &bdet);
+            r.detail += std::string(" | bridge aggressive->") + (target ? "true" : "false") +
+                        " " + outcome_name(bo) + " (" + bdet + ")";
+            if (bo == WriteOutcome::Missing || bo == WriteOutcome::Denied) {
+                bridge_ = false;   // 桥接能力降级，主 Controller 保持 Active
+                bridgeWhy_ = "bridge lost: " + bdet;
+            }
+        } else if (!cmosJson_.empty()) {
+            r.detail += " | bridge DEGRADED (" + bridgeWhy_ + ")";
+        }
+
         state_ = r.state;
         last_ = r.detail;
         return r;
@@ -97,11 +140,73 @@ public:
                " mode=" + mode_ + " " + last_;
     }
 
+    // ---- 桥接原语（可被测试直接驱动）----
+    std::optional<bool> read_aggressive(SysfsAdapter& ad) const {
+        if (cmosJson_.empty()) return std::nullopt;
+        auto txt = ad.read_all(cmosJson_);
+        if (!txt) return std::nullopt;
+        auto p = txt->find("\"aggressive\"");
+        if (p == std::string::npos) return std::nullopt;
+        auto colon = txt->find(':', p);
+        if (colon == std::string::npos) return std::nullopt;
+        auto t = txt->find("true", colon);
+        auto f = txt->find("false", colon);
+        if (t != std::string::npos && (f == std::string::npos || t < f)) return true;
+        if (f != std::string::npos) return false;
+        return std::nullopt;
+    }
+
+    // 设置 aggressive：幂等（同值不写）+ 原子替换 + 读回校验
+    WriteOutcome set_aggressive(SysfsAdapter& ad, bool target, bool dryRun, std::string* detail) {
+        auto cur = read_aggressive(ad);
+        if (!cur) {
+            if (detail) *detail = "aggressive key not found";
+            return WriteOutcome::Missing;
+        }
+        if (*cur == target) {
+            if (detail) *detail = "already " + std::string(target ? "true" : "false") + " (no-op)";
+            return WriteOutcome::Ok;
+        }
+        auto txt = ad.read_all(cmosJson_);     // 已 trim，仅用于定位与校验
+        if (!txt) { if (detail) *detail = "read failed"; return WriteOutcome::Missing; }
+        // 读原始字节（含尾换行）——改别人配置必须字节保真，除目标字段外一字不动
+        std::string neu;
+        {
+            std::ifstream rf(ad.full(cmosJson_), std::ios::binary);
+            std::ostringstream ss; ss << rf.rdbuf(); neu = ss.str();
+        }
+        if (neu.empty()) { if (detail) *detail = "raw read failed"; return WriteOutcome::Missing; }
+        auto p = neu.find("\"aggressive\"");
+        if (p == std::string::npos) { if (detail) *detail = "key lost"; return WriteOutcome::Missing; }
+        auto colon = neu.find(':', p);
+        auto t = neu.find("true", colon), f = neu.find("false", colon);
+        if (t != std::string::npos && (f == std::string::npos || t < f))
+            neu.replace(t, 4, target ? "true" : "false");
+        else if (f != std::string::npos)
+            neu.replace(f, 5, target ? "true" : "false");
+        else { if (detail) *detail = "value not parseable"; return WriteOutcome::Mismatch; }
+
+        WriteOutcome o = ad.write(cmosJson_, neu, dryRun, detail);
+        if (o != WriteOutcome::Ok) return o;
+        // 读回独立确认（幂等 + 语义正确，而非仅字节相等）
+        auto back = read_aggressive(ad);
+        if (!back || *back != target) {
+            if (detail) *detail = "readback semantic mismatch";
+            return WriteOutcome::Mismatch;
+        }
+        if (detail) *detail = std::string(*cur ? "true" : "false") + " -> " +
+                              (target ? "true" : "false");
+        return o;
+    }
+
 private:
     CtrlState state_ = CtrlState::Probing;
     CtrlReport r_;
-    std::string policyFile_, policyPath_, mode_ = "balance", last_;
+    std::string policyFile_, policyPath_, cmosJson_, mode_ = "balance", last_;
     bool pressured_ = false;
+    bool bridge_ = false;
+    std::string bridgeWhy_ = "not probed";
+    bool baselineAgg_ = false;
 };
 
 // ============================= CPU Controller =============================
@@ -219,8 +324,9 @@ private:
     CtrlReport r_{CtrlState::Probing, ""};
 };
 
-ControllerPtr make_memory_controller(const std::string& policyFile) {
-    return std::make_unique<MemoryController>(policyFile);
+ControllerPtr make_memory_controller(const std::string& policyFile,
+                                     const std::string& cmosJson) {
+    return std::make_unique<MemoryController>(policyFile, cmosJson);
 }
 ControllerPtr make_cpu_controller()    { return std::make_unique<CpuController>(); }
 ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuPlaceholder>(); }

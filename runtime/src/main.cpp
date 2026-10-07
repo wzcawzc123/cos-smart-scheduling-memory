@@ -44,6 +44,9 @@ private:
 
 int main(int argc, char** argv) {
     const char* logdir = (argc > 1) ? argv[1] : "/sdcard/Android/UnifiedRootOptimizer/log";
+    // --bridge-enforce: 单 Controller 逐项放量（§9.2 enforce 阶段）。仅 Memory 桥接真写，
+    // CPU 侧 maxFreq 恒为 -1 不产生写入，其余仍 dry-run 语义不变。
+    bool bridgeEnforce = (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0);
     signal(SIGINT, on_stop); signal(SIGTERM, on_stop);
 
     EventQueue q;
@@ -63,7 +66,8 @@ int main(int argc, char** argv) {
     // ---- M2′ Controller 层：能力探测（缺失节点逐个降级，不阻断启动）----
     SysfsAdapter ad;
     ControllerRegistry reg;
-    reg.add(make_memory_controller(std::string(logdir) + "/policy.memory.txt"));
+    reg.add(make_memory_controller(std::string(logdir) + "/policy.memory.txt",
+                                   "/data/adb/modules/COSMemory/config/memory.json"));
     reg.add(make_cpu_controller());
     reg.add(make_gpu_placeholder());
     reg.add(make_thermal_placeholder());
@@ -76,7 +80,9 @@ int main(int argc, char** argv) {
         plog.line(line);
         fprintf(stderr, "[URO-M2′] %s\n", line.c_str());
     }
-    fprintf(stderr, "[URO-M2′] dryRun=1 (SHADOW — 不写任何系统节点)\n");
+    fprintf(stderr, "[URO-M2′] dryRun=%d (SHADOW — 不写任何系统节点%s)\n",
+            bridgeEnforce ? 0 : 1,
+            bridgeEnforce ? "；bridge-enforce: 仅 COSMemory aggressive 开关真写" : "");
 
     // ---- M3 PolicyManager：场景判定 + generation + lease ----
     PolicyManager pm;
@@ -113,15 +119,15 @@ int main(int argc, char** argv) {
                   " why=" + dec.why);
 
         if (dec.tactics.handover) {
-            // §5.5 全量让权：本框架零写入，降级为观察者
-            plog.line("  HANDOVER — zero writes (control handed to GameAssistant/kernel)");
-            lastApplied = EffectivePolicy{};
-            appliedOnce = true;
-            return;
+            // §5.5 全量让权的准确语义：
+            //   CPU/GPU → 撤销我方全部上限（maxFreq=-1 本就无约束 → 零写入，不与游戏助手打架）
+            //   Memory  → "暂停主动 reclaim" 是让权的执行动作，必须真正下发（aggressive=false）
+            // 故此处不跳过 apply，靠 eff 自身的约束为空来保证 CPU/GPU 零写入。
+            plog.line("  HANDOVER — cpu/gpu withdraw (zero writes); memory bridge pauses reclaim");
         }
         if (appliedOnce && !materially_different(eff, lastApplied)) return;  // 幂等
 
-        auto reps = reg.apply_all(eff, ad, /*dryRun=*/true);   // SHADOW：永不落盘
+        auto reps = reg.apply_all(eff, ad, /*dryRun=*/!bridgeEnforce);
         std::string l = std::string(ts) + " APPLY gen=" + std::to_string(eff.generation) +
                         " maxFreq=" + std::to_string(eff.cpu.maxFreq) +
                         " reclaim=" + (eff.memory.reclaimEnabled ? "1" : "0") +

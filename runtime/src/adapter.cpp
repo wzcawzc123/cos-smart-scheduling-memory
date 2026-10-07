@@ -63,7 +63,17 @@ WriteOutcome SysfsAdapter::write(const std::string& relPath, const std::string& 
             return log(WriteOutcome::Missing, "node absent and parent not writable: " + parent);
         cap.writable = true;
     }
-    if (dryRun)        return log(WriteOutcome::DryRun, "would write: " + value);
+    if (dryRun) {
+        // detail 用于日志：多行/超长值（如 JSON 配置）必须截断，否则污染 policy.log
+        std::string preview = value;
+        if (preview.size() > 120) {
+            auto nl = preview.find('\n');
+            if (nl != std::string::npos && nl < 120) preview = preview.substr(0, nl);
+            else preview = preview.substr(0, 120);
+            preview += "...(len=" + std::to_string(value.size()) + ")";
+        }
+        return log(WriteOutcome::DryRun, "would write: " + preview);
+    }
     if (!cap.writable) return log(WriteOutcome::Denied, "write access denied");
 
     // 写前校验通过，落盘（目标不存在则创建）
@@ -80,12 +90,28 @@ WriteOutcome SysfsAdapter::write(const std::string& relPath, const std::string& 
     if (n != (ssize_t)value.size())
         return log(WriteOutcome::Denied, std::string("write: ") + strerror(err));
 
-    // 写后 readback（§5.2 强制；被 ROM/governor 拦截或动态钳制时暴露为 Mismatch）
-    auto back = read(relPath);
+    // 写后 readback（§5.2 强制；被 ROM/governor 拦截或动态钳制时暴露为 Mismatch）。
+    // 比较前把 value 也 trim：目标文件尾换行属格式噪音，不参与语义比较（写入仍保真）。
+    auto back = read_all(relPath);
     if (!back) return log(WriteOutcome::Mismatch, "readback failed");
-    if (*back != value)
-        return log(WriteOutcome::Mismatch, "readback '" + *back + "' != wrote '" + value + "'");
+    std::string expect = value;
+    { auto b = expect.find_last_not_of(" \t\r\n");
+      expect = (b == std::string::npos) ? "" : expect.substr(0, b + 1); }
+    if (*back != expect)
+        return log(WriteOutcome::Mismatch, "readback mismatch (len " +
+                   std::to_string(back->size()) + " vs " + std::to_string(expect.size()) + ")");
     return log(WriteOutcome::Ok, "readback verified");
+}
+
+std::optional<std::string> SysfsAdapter::read_all(const std::string& relPath) const {
+    std::ifstream f(full(relPath), std::ios::binary);
+    if (!f.is_open()) return std::nullopt;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    std::string s = ss.str();
+    auto b = s.find_last_not_of(" \t\r\n");
+    if (b == std::string::npos) return std::string("");
+    return s.substr(0, b + 1);
 }
 
 } // namespace uro

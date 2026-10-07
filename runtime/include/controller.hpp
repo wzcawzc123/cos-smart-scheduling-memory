@@ -59,8 +59,10 @@ public:
 
 using ControllerPtr = std::unique_ptr<Controller>;
 
-// 工厂（实现见 src/controllers.cpp）：Memory/CPU 为 M2′ 实装，GPU/Thermal 为接口占位
-ControllerPtr make_memory_controller(const std::string& policyFile = "");
+// 工厂（实现见 src/controllers.cpp）：Memory/CPU 为 M2′ 实装，GPU/Thermal 为接口占位。
+// cmosJson = COSMemory config/memory.json 路径（空 = 不启用桥接，桥接能力降级）
+ControllerPtr make_memory_controller(const std::string& policyFile = "",
+                                     const std::string& cmosJson = "");
 ControllerPtr make_cpu_controller();
 ControllerPtr make_gpu_placeholder();
 ControllerPtr make_thermal_placeholder();
@@ -113,13 +115,18 @@ public:
         return acc;
     }
 
-    // 边界 apply：逐个执行，单个失败不影响其他；返回各 Controller 报告
+    // 边界 apply：Degraded/Faulted 一律跳过（与 resolve 一致——降级即该类能力不可用，
+    // 不得继续执行写入）；其余逐个执行，单个失败不影响其他
     std::vector<CtrlReport> apply_all(const EffectivePolicy& eff,
                                       SysfsAdapter& ad, bool dryRun) {
         std::vector<CtrlReport> reps;
         for (auto& c : ctrls_) {
             if (c->state() == CtrlState::Faulted) {
                 reps.push_back({CtrlState::Faulted, "skipped: faulted"});
+                continue;
+            }
+            if (c->state() == CtrlState::Degraded) {
+                reps.push_back({CtrlState::Degraded, "skipped: degraded"});
                 continue;
             }
             CtrlReport r;
