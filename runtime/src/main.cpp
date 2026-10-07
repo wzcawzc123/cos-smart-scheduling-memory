@@ -44,9 +44,19 @@ private:
 
 int main(int argc, char** argv) {
     const char* logdir = (argc > 1) ? argv[1] : "/sdcard/Android/UnifiedRootOptimizer/log";
-    // --bridge-enforce: 单 Controller 逐项放量（§9.2 enforce 阶段）。仅 Memory 桥接真写，
-    // CPU 侧 maxFreq 恒为 -1 不产生写入，其余仍 dry-run 语义不变。
-    bool bridgeEnforce = (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0);
+    // enforce 放量：启动参数（CI/调试用）OR 开关文件（面板写入，用户可自主选择）。
+    // 开关文件在每个策略边界热读 → 面板切换后无需重启即生效（§4.4 配置热重载）。
+    const char* kUroConf = "/sdcard/Android/UnifiedRootOptimizer/uro.conf";
+    auto read_bridge_enforce = [](const char* p) -> bool {
+        std::ifstream f(p);
+        if (!f.is_open()) return false;          // 文件缺省 = 关（默认 SHADOW）
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("BRIDGE_ENFORCE=1", 0) == 0) return true;
+        return false;
+    };
+    bool argEnforce = (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0);
+    bool bridgeEnforce = argEnforce || read_bridge_enforce(kUroConf);   // 仅用于启动日志
     signal(SIGINT, on_stop); signal(SIGTERM, on_stop);
 
     EventQueue q;
@@ -80,9 +90,11 @@ int main(int argc, char** argv) {
         plog.line(line);
         fprintf(stderr, "[URO-M2′] %s\n", line.c_str());
     }
-    fprintf(stderr, "[URO-M2′] dryRun=%d (SHADOW — 不写任何系统节点%s)\n",
+    fprintf(stderr, "[URO-M2′] dryRun=%d (enforce=%s: 启动参数 %s / 面板开关文件 %s)\n",
             bridgeEnforce ? 0 : 1,
-            bridgeEnforce ? "；bridge-enforce: 仅 COSMemory aggressive 开关真写" : "");
+            bridgeEnforce ? "ON" : "off",
+            (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0) ? "on" : "off",
+            read_bridge_enforce(kUroConf) ? "on" : "off");
 
     // ---- M3 PolicyManager：场景判定 + generation + lease ----
     PolicyManager pm;
@@ -97,12 +109,31 @@ int main(int argc, char** argv) {
     Event e;
     EffectivePolicy lastApplied;
     bool appliedOnce = false;
+    bool lastEn = false;   // 上一边界的 enforce 态（用于关闭时恢复基线）
 
     // ---- 策略执行单元（事件驱动与租约回落共用；§3.4 写完即走）----
     auto run_policy = [&](const Event& ev, uint64_t now) {
         Decision dec = pm.decide(st, ev, now);
         pm.note_lease(dec.leaseUntilMs);
         if (!dec.changed) return;
+        // 热读面板开关（每次策略边界，非轮询）：面板一开一关立即生效。
+        // 注意用启动参数 argEnforce 而非缓存值 bridgeEnforce —— 后者含启动时的文件状态，
+        // 会因 || 短路让热读永不执行（端到端验证抓到的 bug）。
+        bool en = argEnforce || read_bridge_enforce(kUroConf);
+        if (lastEn && !en) {
+            // 开关刚被面板关闭：执行最后一次写入，把我方可能改动的 aggressive 恢复用户基线，
+            // 随后转入 dry-run（§9 无互相覆盖的收尾；reclaim=true+maxKill=0 即 baseline 路径）
+            EffectivePolicy restore;
+            restore.memory.reclaimEnabled = true;
+            restore.memory.maxKillPerRound = 0;
+            reg.apply_all(restore, ad, /*dryRun=*/false);
+            plog.line("SWITCH off -> aggressive restored to user baseline, then dry-run");
+            for (auto& t : ad.traces())
+                plog.line("  TRACE " + t.op + " " + t.path + " -> " + t.result +
+                          (t.detail.empty() ? "" : " | " + t.detail));
+            ad.clear_traces();
+        }
+        lastEn = en;
 
         EffectivePolicy base;
         base.memory.reclaimEnabled  = dec.tactics.reclaimEnabled;
@@ -127,7 +158,7 @@ int main(int argc, char** argv) {
         }
         if (appliedOnce && !materially_different(eff, lastApplied)) return;  // 幂等
 
-        auto reps = reg.apply_all(eff, ad, /*dryRun=*/!bridgeEnforce);
+        auto reps = reg.apply_all(eff, ad, /*dryRun=*/!en);
         std::string l = std::string(ts) + " APPLY gen=" + std::to_string(eff.generation) +
                         " maxFreq=" + std::to_string(eff.cpu.maxFreq) +
                         " reclaim=" + (eff.memory.reclaimEnabled ? "1" : "0") +
