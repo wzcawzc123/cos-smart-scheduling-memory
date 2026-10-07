@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 
     DriverPaths p;   // 默认路径（可后续外置配置）
     fprintf(stderr,
-        "[URO-M2] UnifiedRootOptimizer Runtime v0.2.0 (SHADOW, read-only, focus-补盲)\n"
+        "[URO-M2] UnifiedRootOptimizer Runtime v0.2.1 (SHADOW, read-only, focus-补盲+锁屏仲裁)\n"
         "[URO-M2] fg=%s focusPoll=%dms mode=%s uroDir=%s cosmDir=%s\n"
         "[URO-M2] log=%s/events.log\n",
         p.topAppCpuset.c_str(), p.focusPollMs, p.modeFile.c_str(), p.uroDir.c_str(),

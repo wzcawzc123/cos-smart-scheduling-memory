@@ -69,38 +69,7 @@ static std::string resolve_foreground(const std::string& cgroupProcs) {
     return pkg;
 }
 
-// ---------- A. ForegroundChanged（主扳机：inotify top-app） ----------
-void fg_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
-    std::string last = resolve_foreground(p.topAppCpuset);   // bootstrap 初态
-    if (!last.empty() && fg->publish(last))
-        q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-boot", last});
-    while (run) {
-        int fd = inotify_init1(IN_NONBLOCK);
-        if (fd < 0) { q.push({EventType::ControllerFault, now_ms(), 0, "fg-inotify", "inotify_init fail"}); sleep(5); continue; }
-        int wd = inotify_add_watch(fd, p.topAppCpuset.c_str(), IN_MODIFY | IN_ATTRIB | IN_MOVED_TO);
-        if (wd < 0) {
-            q.push({EventType::ControllerFault, now_ms(), 0, "fg-inotify", "watch fail: " + p.topAppCpuset});
-            close(fd); sleep(5); continue;
-        }
-        char buf[4096];
-        while (run) {
-            int n = read(fd, buf, sizeof buf);
-            if (n > 0) {
-                usleep(300 * 1000);          // 防抖 300ms（v2 参数）
-                while (read(fd, buf, sizeof buf) > 0) {}
-                std::string now = resolve_foreground(p.topAppCpuset);
-                if (!now.empty() && fg->publish(now))
-                    q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-inotify", now});
-            } else { usleep(200 * 1000); }
-        }
-        close(fd);
-    }
-}
-
-// ---------- A'. ForegroundChanged（补盲扳机：mCurrentFocus 巡检） ----------
-// 修 M1 影子对账 v2 §2-A1：systemui 常驻 top-app cgroup，下拉通知栏/锁屏时
-// cgroup 成员无变化 -> inotify 永不触发（22 条直接 missed + 8 条恢复事件下游）。
-// dumpsys window 单次实测 14-20ms，1s 巡检的常驻成本约 2% 单核占空。
+// 读当前焦点窗口原始行（inotify 扳机仲裁与 focus 巡检共用）
 static std::string read_focus_raw() {
     FILE* fp = popen("dumpsys window 2>/dev/null | grep -m1 'mCurrentFocus='", "r");
     std::string line;
@@ -129,6 +98,52 @@ static std::string pkg_from_focus(const std::string& raw) {
     return tok;
 }
 
+// 焦点是否处于"非 App 态"（锁屏/通知栏/系统弹窗/无焦点）：
+// 此时 ResumedActivity 仍指向底层 App，与焦点语义冲突，inotify 扳机须让位。
+static bool focus_is_non_app(const std::string& raw) {
+    if (raw.empty()) return false;   // 读不到焦点时不做判断（保守放行）
+    for (const char* w : {"NotificationShade", "StatusBar", "NavigationBar", "Keyguard"})
+        if (raw.find(w) != std::string::npos) return true;
+    return pkg_from_focus(raw).empty();   // null / PopupWindow / Pop-Up Window / ActionsDialog
+}
+
+// ---------- A. ForegroundChanged（主扳机：inotify top-app） ----------
+void fg_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
+    std::string last = resolve_foreground(p.topAppCpuset);   // bootstrap 初态
+    if (!last.empty() && fg->publish(last))
+        q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-boot", last});
+    while (run) {
+        int fd = inotify_init1(IN_NONBLOCK);
+        if (fd < 0) { q.push({EventType::ControllerFault, now_ms(), 0, "fg-inotify", "inotify_init fail"}); sleep(5); continue; }
+        int wd = inotify_add_watch(fd, p.topAppCpuset.c_str(), IN_MODIFY | IN_ATTRIB | IN_MOVED_TO);
+        if (wd < 0) {
+            q.push({EventType::ControllerFault, now_ms(), 0, "fg-inotify", "watch fail: " + p.topAppCpuset});
+            close(fd); sleep(5); continue;
+        }
+        char buf[4096];
+        while (run) {
+            int n = read(fd, buf, sizeof buf);
+            if (n > 0) {
+                usleep(300 * 1000);          // 防抖 300ms（v2 参数）
+                while (read(fd, buf, sizeof buf) > 0) {}
+                // 双扳机仲裁：焦点处于非 App 态（锁屏/通知栏/无包名弹窗）时，
+                // ResumedActivity 仍指向底层 App，会把 focus 刚建立的 systemui 态拉回。
+                // 此次抑制，锁屏语义交由 focus_driver 主导（解锁后焦点回 App 即恢复正常）。
+                std::string fraw = read_focus_raw();
+                if (focus_is_non_app(fraw)) continue;
+                std::string now = resolve_foreground(p.topAppCpuset);
+                if (!now.empty() && fg->publish(now))
+                    q.push({EventType::ForegroundChanged, now_ms(), 0, "fg-inotify", now});
+            } else { usleep(200 * 1000); }
+        }
+        close(fd);
+    }
+}
+
+// ---------- A'. ForegroundChanged（补盲扳机：mCurrentFocus 巡检） ----------
+// 修 M1 影子对账 v2 §2-A1：systemui 常驻 top-app cgroup，下拉通知栏/锁屏时
+// cgroup 成员无变化 -> inotify 永不触发（22 条直接 missed + 8 条恢复事件下游）。
+// dumpsys window 单次实测 14-20ms，1s 巡检的常驻成本约 2% 单核占空。
 void focus_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
     std::string lastRaw;   // 本源上次看到的原始焦点串（避免每个周期都解析）
     while (run) {
