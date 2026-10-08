@@ -198,6 +198,7 @@ int main(int argc, char** argv) {
     // std::thread t2(mode_config_driver, std::ref(q), p, std::ref(g_run));
     std::thread t3(sampler_driver, std::ref(q), p, std::ref(g_run));
     std::thread t4(screen_driver, std::ref(q), nullptr, std::ref(g_run));
+    std::thread t6(touch_driver, std::ref(q), std::ref(g_run));   // 第2步：触摸边沿
 
     Event e;
     EffectivePolicy lastApplied;
@@ -250,7 +251,25 @@ int main(int argc, char** argv) {
             // 故此处不跳过 apply，靠 eff 自身的约束为空来保证 CPU/GPU 零写入。
             plog.line("  HANDOVER — cpu/gpu withdraw (zero writes); memory bridge pauses reclaim");
         }
-        if (appliedOnce && !materially_different(eff, lastApplied)) return;  // 幂等
+        if (appliedOnce && !materially_different(eff, lastApplied)) {
+            // 档位变化但参数包相同（如空包档互切 PERFORMANCE⇄BALANCE）：不写入，
+            // 但决策必须入 telemetry（时间线完整性；applied=false 一目了然）
+            { static int telSkip = 0; ++telSkip;
+              std::ostringstream jt2;
+              jt2 << "{\"ts\":" << now / 1000
+                  << ",\"action_id\":\"ts" << now / 1000 << "-" << telSkip << "-" << getpid() << "\""
+                  << ",\"gen\":" << eff.generation
+                  << ",\"scenario\":\"" << scenario_name(dec.scenario) << "\""
+                  << ",\"why\":\"" << json_esc(dec.why) << "\""
+                  << ",\"enforce\":" << (en ? 1 : 0) << ",\"dryRun\":" << (en ? 0 : 1)
+                  << ",\"applied\":0"
+                  << ",\"handover\":" << (dec.tactics.handover ? 1 : 0)
+                  << ",\"fg\":\"" << json_esc(st.foregroundPackage) << "\"}";
+              tel_append(std::string(logdir) + "/telemetry.jsonl", jt2.str());
+              plog.line(std::string(ts) + " SCENARIO=" + scenario_name(dec.scenario) +
+                        " gen=" + std::to_string(eff.generation) + " no-write(tel applied=0)"); }
+            return;
+        }
 
         auto reps = reg.apply_all(eff, ad, /*dryRun=*/!en);
         std::string l = std::string(ts) + " APPLY gen=" + std::to_string(eff.generation) +
@@ -280,6 +299,7 @@ int main(int argc, char** argv) {
                << ",\"why\":\"" << json_esc(dec.why) << "\""
                << ",\"enforce\":" << (en ? 1 : 0)
                << ",\"dryRun\":" << (en ? 0 : 1)
+               << ",\"applied\":1"
                << ",\"handover\":" << (dec.tactics.handover ? 1 : 0)
                << ",\"fg\":\"" << json_esc(st.foregroundPackage) << "\""
                << ",\"memAvailMb\":" << st.memAvailMb
@@ -299,11 +319,22 @@ int main(int argc, char** argv) {
 
     while (g_run) {
         if (!q.pop(e, 500)) {
-            // 空闲 tick：只做租约到期判断（读时钟，非写入轮询；§4.4 TTL 回落）
+            // 空闲 tick：租约到期判断 + Touch 档位回落重判（读时钟，非写入轮询；§4.4 TTL 回落）
             if (pm.lease_expired(now_ms())) {
                 pm.set_pressure_time(0);            // 压力租约过期 → 清压力态
                 run_policy(e, now_ms());            // 重新决策 → 回落 DAILY/POWERSAVE
                 plog.line("LEASE expired -> scenario fallback");
+            }
+            // Touch→PERFORMANCE 的回落没有事件可等（up 之后再无事件）——空闲 tick 是唯一触发点。
+            // 用 ConfigChanged 合成事件（pick 不看它，避免旧事件副作用如刷新压力滞回）；
+            // 幂等由 dec.changed 判重保证：无变化不产生 apply/telemetry。
+            {
+                Event idle{};
+                idle.type = EventType::ConfigChanged;
+                idle.ts_ms = now_ms();
+                idle.generation = st.generation;
+                idle.source = "idle-tick";
+                run_policy(idle, now_ms());
             }
             continue;
         }
@@ -329,7 +360,7 @@ int main(int argc, char** argv) {
     }
 
     g_run = false; q.stop();
-    t1.join(); t5.join(); t3.join(); t4.join();   // t2(mode driver) 已于 v0.11 停用
+    t1.join(); t5.join(); t3.join(); t4.join(); t6.join();   // t2(mode driver) 已于 v0.11 停用
     fprintf(stderr, "[URO-M2′] stopped. final gen=%llu fg=%s mode=%s\n",
             (unsigned long long)st.generation, st.foregroundPackage.c_str(), st.mode.c_str());
     for (size_t i = 0; i < reg.size(); ++i)

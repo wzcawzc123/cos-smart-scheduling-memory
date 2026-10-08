@@ -82,6 +82,37 @@ static void test_scenario(const std::string& dir) {
         std::printf("[screen-auto] ok (熄屏省电/压过GAME/亮屏恢复)\n");
     }
 
+    // ---- Touch 感知（第2步）：down→PERFORMANCE、1.5s 滞回回落、GAME/熄屏优先 ----
+    {
+        PolicyManager pt;
+        { std::string gl = dir + "/touch_game.txt";
+          std::ofstream f(gl); f << "com.tencent.tmgp.sgame\n"; pt.set_game_list_path(gl); }
+        GlobalState st;
+        st.screenOn = true;
+        st.foregroundPackage = "com.tencent.mm";
+        Event td{};
+        td.type = EventType::TouchChanged;
+        td.payload = "down";
+        auto a = pt.decide(st, td, 10000);
+        CHECK(a.scenario == Scenario::PERFORMANCE, "touch -> PERFORMANCE");
+        CHECK(a.why.find("touch") != std::string::npos, "why=touch");
+        Event idle{};
+        idle.type = EventType::ConfigChanged;
+        idle.source = "idle-tick";
+        auto b = pt.decide(st, idle, 11400);
+        CHECK(b.scenario == Scenario::PERFORMANCE, "within 1.5s hold PERFORMANCE");
+        auto c = pt.decide(st, idle, 11600);
+        CHECK(c.scenario == Scenario::BALANCE, "touch timeout -> BALANCE 回落");
+        st.foregroundPackage = "com.tencent.tmgp.sgame";
+        auto d = pt.decide(st, td, 12000);
+        CHECK(d.scenario == Scenario::GAME, "touch in game -> GAME wins");
+        st.foregroundPackage = "com.tencent.mm";
+        st.screenOn = false;
+        auto e2 = pt.decide(st, td, 13000);
+        CHECK(e2.scenario == Scenario::POWER_SAVE, "touch while screen off -> POWER_SAVE");
+        std::printf("[touch] ok (PERFORMANCE/滞回/GAME优先/熄屏优先)\n");
+    }
+
     // v0.11 四档自治：系统 mode.txt 不再影响档位（用户不依赖系统省电/高性能设置）
     d = pm.decide(st_with("com.tencent.mm", "powersave"),
                   mk(EventType::ModeChanged, "powersave"), 3000);

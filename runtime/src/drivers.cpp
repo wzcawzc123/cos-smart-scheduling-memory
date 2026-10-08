@@ -2,6 +2,8 @@
 #include "drivers.hpp"
 #include <sys/inotify.h>
 #include <sys/system_properties.h>
+#include <linux/input.h>
+#include <poll.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstring>
@@ -249,6 +251,63 @@ void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
         }
         usleep((st ? 1000 : 2000) * 1000);
     }
+}
+
+// ==================== Touch driver（第2步·智能感知）====================
+// 监听触摸屏 input 设备（/proc/bus/input/devices 中 Name="touchpanel" → eventN）。
+// 只认 BTN_TOUCH down/up 边沿——每下触摸仅 2 个事件，天然节流（ABS 移动流全部丢弃）。
+// 失败降级：设备缺失/打不开 → ControllerFault（主流程继续，触摸感知置灰，不拖垮）。
+void touch_driver(EventQueue& q, std::atomic<bool>& run) {
+    std::string evPath;
+    {
+        std::ifstream pf("/proc/bus/input/devices");
+        std::string line, name;
+        bool named = false;
+        while (std::getline(pf, line)) {
+            if (line.rfind("N: Name=", 0) == 0) { name = line; named = true; }
+            else if (named && line.rfind("H: Handlers=", 0) == 0) {
+                named = false;
+                if (name.find("touchpanel") == std::string::npos) continue;
+                auto p = line.find("event");
+                if (p != std::string::npos) {
+                    std::string num;
+                    for (size_t i = p + 5; i < line.size() && isdigit((unsigned char)line[i]); ++i)
+                        num += line[i];
+                    if (!num.empty()) evPath = "/dev/input/event" + num;
+                }
+                if (!evPath.empty()) break;
+            }
+        }
+    }
+    if (evPath.empty()) {
+        q.push({EventType::ControllerFault, now_ms(), 0, "touch", "touchpanel device not found (touch感知关闭)"});
+        while (run) sleep(1);
+        return;
+    }
+    int fd = open(evPath.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        q.push({EventType::ControllerFault, now_ms(), 0, "touch", "open " + evPath + " failed (touch感知关闭)"});
+        while (run) sleep(1);
+        return;
+    }
+    int last = -1;
+    while (run) {
+        struct pollfd pfd{fd, POLLIN, 0};
+        int r = poll(&pfd, 1, 100);
+        if (r > 0 && (pfd.revents & POLLIN)) {
+            struct input_event ie;
+            while (read(fd, &ie, sizeof ie) == (ssize_t)sizeof ie) {
+                if (ie.type == EV_KEY && ie.code == BTN_TOUCH) {
+                    int v = ie.value ? 1 : 0;
+                    if (v != last) {
+                        last = v;
+                        q.push({EventType::TouchChanged, now_ms(), 0, "touch-input", v ? "down" : "up"});
+                    }
+                }
+            }
+        }
+    }
+    close(fd);
 }
 
 } // namespace uro

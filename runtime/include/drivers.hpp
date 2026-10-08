@@ -49,6 +49,8 @@ void mode_config_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run);
 void sampler_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run);
 // D. 屏幕状态：property 零 fork 读取（debug.tracing.screen_state，CT v4.2 同源机制）
 void screen_driver(EventQueue& q, EventQueue* /*reserved*/, std::atomic<bool>& run);
+// 第2步·智能感知：触摸屏 BTN_TOUCH 边沿（down/up → TouchChanged；边沿即节流）
+void touch_driver(EventQueue& q, std::atomic<bool>& run);
 
 uint64_t now_ms();
 

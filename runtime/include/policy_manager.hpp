@@ -45,6 +45,8 @@ public:
 
     // 主判定：由事件驱动调用（不轮询）。hysteresisMs 用于压力场景退出滞回。
     Decision decide(const GlobalState& st, const Event& e, uint64_t now_ms) {
+        // Touch 感知（第2步）：down/up 边沿都刷新触摸时间（1.5s 滞回窗口由空闲 tick 触发回落）
+        if (e.type == EventType::TouchChanged) lastTouchMs_ = now_ms;
         Scenario cand = pick_scenario(st, e, now_ms);
 
         // --- 滞回（防震荡）：压力场景退出需要持续无压力达 hysteresisMs ---
@@ -122,6 +124,15 @@ private:
         }
         if (st.generation <= 1 && e.source.find("boot") != std::string::npos) {
             why_ = "bootstrap"; return Scenario::BOOT;
+        }
+        // Touch 感知（第2步·CT 搬运）：亮屏 + 1.5s 内有触摸边沿 → PERFORMANCE 档。
+        // 当前为空包档（参数=基线），本期先通"感知→档位→telemetry→看板"链路；
+        // hispeed_freq 等参数待专项实测后放量（Oplus 私有语义，不猜不写）。
+        // 局限：按住滑动 >1.5s 会中途回落、up 时回升（PERFORMANCE 与 BALANCE 同参，
+        // 切换不产生写入，仅 telemetry 多两行）——持续活跃检测留二期。
+        if (lastTouchMs_ && now_ms - lastTouchMs_ < 1500) {
+            why_ = "touch";
+            return Scenario::PERFORMANCE;
         }
         // v0.11 四档自治：不再读系统 mode.txt（用户从不手动切系统省电/高性能，判档全走自身感知）
         why_ = "fg=" + st.foregroundPackage;
@@ -202,6 +213,7 @@ private:
     ScenarioTactics lastTactics_{};
     uint64_t lastGen_ = 0;
     uint64_t lastPressureMs_ = 0;
+    uint64_t lastTouchMs_ = 0;             // 最近触摸边沿时间（Touch→PERFORMANCE，1.5s 滞回）
     uint64_t leaseDeadlineMs_ = 0;
     uint64_t hysteresisMs_ = 15000;      // 压力退出滞回 15s（防震荡）
     uint64_t pressureLeaseMs_ = 60000;   // 压力策略租约 60s，过期回落
