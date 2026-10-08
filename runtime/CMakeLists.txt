@@ -26,7 +26,7 @@ add_executable(URORuntime
     src/main.cpp
     src/drivers.cpp
     src/adapter.cpp
-    src/controllers.cpp src/appopt.cpp
+    src/controllers.cpp src/appopt.cpp src/evidence.cpp
 )
 target_link_libraries(URORuntime Threads::Threads)
 set_target_properties(URORuntime PROPERTIES RUNTIME_OUTPUT_DIRECTORY bin)

@@ -69,6 +69,11 @@ void thread_evidence_driver(const std::string& logdir, const std::string& appopt
                             const std::string& gamePath, const std::string& cpusetRoot,
                             std::atomic<bool>& run);
 
+// Evidence 扩展（v0.17：温度/FPS 只读采样，纯逻辑在 evidence.cpp，host 可测）
+std::string thermal_json(const std::string& thermalRoot);
+bool parse_gfxinfo(const std::string& text, long& total, long& janky);
+void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool>& run);
+
 uint64_t now_ms();
 
 } // namespace uro

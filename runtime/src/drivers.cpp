@@ -357,5 +357,52 @@ void thread_evidence_driver(const std::string& logdir, const std::string& appopt
     }
 }
 
+// ---------- Evidence 扩展（v0.17：FPS + 温度，T-OBS 只读）----------
+// 60s 双采样：thermal → thermal.jsonl（top3+battery）；gfxinfo 前台包差分 → fps.jsonl。
+// gfxinfo 是累计计数：同包做差分得窗口增量，切包重置基线（首采只记基线行）。
+void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool>& run) {
+    std::string lastPkg;
+    long lastTotal = -1, lastJanky = 0;
+    while (run) {
+        {
+            std::string tj = thermal_json("/sys/class/thermal");
+            std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
+            lf << "{\"ts\":" << now_ms() << "," << tj << "}\n";
+        }
+        {
+            std::string pkg = fg->get();
+            if (!pkg.empty()) {
+                std::string cmd = "dumpsys gfxinfo " + pkg + " 2>/dev/null";
+                FILE* fp = popen(cmd.c_str(), "r");
+                if (fp) {
+                    char buf[4096];
+                    size_t n = fread(buf, 1, sizeof buf - 1, fp);
+                    buf[n] = 0;
+                    pclose(fp);
+                    long total = -1, janky = 0;
+                    if (parse_gfxinfo(buf, total, janky)) {
+                        if (pkg != lastPkg || lastTotal < 0) {
+                            if (pkg != lastPkg) {
+                                std::ofstream lf(logdir + "/fps.jsonl", std::ios::app);
+                                lf << "{\"ts\":" << now_ms() << ",\"pkg\":\"" << pkg
+                                   << "\",\"reset\":1,\"total\":" << total << "}\n";
+                            }
+                            lastPkg = pkg; lastTotal = total; lastJanky = janky;
+                        } else if (total >= lastTotal) {
+                            long dt = total - lastTotal, dj = janky - lastJanky;
+                            std::ofstream lf(logdir + "/fps.jsonl", std::ios::app);
+                            lf << "{\"ts\":" << now_ms() << ",\"pkg\":\"" << pkg
+                               << "\",\"frames\":" << dt << ",\"janky\":" << dj << "}\n";
+                            lastTotal = total; lastJanky = janky;
+                        }
+                    }
+                }
+            }
+        }
+        for (int i = 0; run && i < 600; ++i) usleep(100 * 1000);   // 60s
+    }
+}
+
 } // namespace uro
+
 

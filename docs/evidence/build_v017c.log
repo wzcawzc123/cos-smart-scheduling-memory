@@ -1,0 +1,181 @@
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /usr/share/cmake-3.31/Modules/CMakeDetermineSystem.cmake:146 (include)
+  CMakeLists.txt:2 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /usr/share/cmake-3.31/Modules/CMakeDetermineSystem.cmake:146 (include)
+  CMakeLists.txt:2 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  CMakeLists.txt:2 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-oc2YxH/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-oc2YxH/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-YEfIHo/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-YEfIHo/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-oocLGY/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-oocLGY/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-WQddzP/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-WQddzP/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-qHBS4k/CMakeLists.txt:4 (project)
+
+
+CMake Deprecation Warning at /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android-legacy.toolchain.cmake:34 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  /workspace/android-sdk/ndk/26.3.11579264/build/cmake/android.toolchain.cmake:54 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/3.31.6/CMakeSystem.cmake:6 (include)
+  /workspace/cos-sched-memory/runtime/build/CMakeFiles/CMakeScratch/TryCompile-qHBS4k/CMakeLists.txt:4 (project)
+
+
+[1/7] Building CXX object CMakeFiles/URORuntime.dir/src/adapter.cpp.o
+[2/7] Building CXX object CMakeFiles/URORuntime.dir/src/appopt.cpp.o
+[3/7] Building CXX object CMakeFiles/URORuntime.dir/src/evidence.cpp.o
+[4/7] Building CXX object CMakeFiles/URORuntime.dir/src/drivers.cpp.o
+[5/7] Building CXX object CMakeFiles/URORuntime.dir/src/controllers.cpp.o
+/workspace/cos-sched-memory/runtime/src/controllers.cpp:612:9: warning: private field 'maxHint_' is not used [-Wunused-private-field]
+    int maxHint_ = -1;
+        ^
+1 warning generated.
+[6/7] Building CXX object CMakeFiles/URORuntime.dir/src/main.cpp.o
+In file included from /workspace/cos-sched-memory/runtime/src/main.cpp:7:
+/workspace/cos-sched-memory/runtime/include/policy_manager.hpp:205:64: warning: unused parameter 'st' [-Wunused-parameter]
+    ScenarioTactics tactics_for(Scenario s, const GlobalState& st) {
+                                                               ^
+1 warning generated.
+[7/7] Linking CXX executable bin/URORuntime
+../output/URORuntime: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /system/bin/linker64, for Android 29, built by NDK r26d (11579264), BuildID[sha1]=f00e622efed6962d0e156c84249169d719f9c7d1, stripped
+4f05460fca1d551bd9bd1c1e9765b038  ../output/URORuntime
+BUILD_RC=0

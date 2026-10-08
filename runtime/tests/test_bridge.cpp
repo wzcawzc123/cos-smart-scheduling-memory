@@ -413,6 +413,36 @@ int main() {
         std::printf("[appopt] ok (计数/豁免校验/GEN框架/降级)\n");
     }
 
+    // ---- 16. [evidence] 温度/FPS 纯逻辑（v0.17）----
+    {
+        // thermal 扫描（fake root）：top3 排序 + battery 单列
+        std::string td = dir + "_therm";
+        for (auto& z : {std::make_pair("thermal_zone0", 45000), std::make_pair("thermal_zone1", 62000),
+                        std::make_pair("thermal_zone2", 38000), std::make_pair("thermal_zone3", 41000),
+                        std::make_pair("thermal_zone4", 30500)}) {
+            system(("mkdir -p " + td + "/" + z.first).c_str());
+            std::ofstream t(td + "/" + z.first + "/type"),
+                          v(td + "/" + z.first + "/temp");
+            t << (z.first == "thermal_zone4" ? "battery" : (std::string("skin-") + z.first));
+            v << z.second;
+        }
+        auto tj = thermal_json(td);
+        CHECK(tj.find("\"c\":62") != std::string::npos, "top1=62度");
+        CHECK(tj.find("\"c\":45") != std::string::npos, "top2=45度");
+        CHECK(tj.find("\"c\":41") != std::string::npos, "top3=41度(38/30.5不入)");
+        CHECK(tj.find("\"battery\":30") != std::string::npos, "battery=30度单列");
+
+        // gfxinfo 解析
+        long tot = -1, jk = -1;
+        CHECK(parse_gfxinfo("Profile data in ms:\n\tTotal frames rendered: 12345\n"
+                            "\tJanky frames: 678 (5.49%)\n", tot, jk),
+              "gfxinfo 解析成功");
+        CHECK(tot == 12345 && jk == 678, "gfxinfo 数值正确");
+        CHECK(!parse_gfxinfo("no frames here", tot, jk), "缺行返回 false");
+
+        std::printf("[evidence] ok (温度top3/battery/gfxinfo解析)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);
