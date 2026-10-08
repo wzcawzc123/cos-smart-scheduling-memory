@@ -277,6 +277,60 @@ int main() {
         std::printf("[crash-depth] ok (多字段崩溃归还)\n");
     }
 
+    // ---- 13. uag 参数接管（阶段B-CPU）：POWERSAVE 写 2500 / 常态回基线 / 崩溃归还 ----
+    {
+        std::string d2 = dir + "_uag";
+        system(("mkdir -p '" + d2 + "'").c_str());
+        // 造 CPU 节点（probe 需要 scaling_* 才 Active；uag 三簇 up_rate 现值 0）
+        for (int i : {0, 3, 7}) {
+            std::string p = d2 + "/sys/devices/system/cpu/cpufreq/policy" + std::to_string(i);
+            system(("mkdir -p '" + p + "/uag'").c_str());
+            { std::ofstream f(p + "/scaling_min_freq"); f << "300000\n"; }
+            { std::ofstream f(p + "/scaling_max_freq"); f << "3187200\n"; }
+            { std::ofstream f(p + "/scaling_governor"); f << "uag\n"; }
+            { std::ofstream f(p + "/uag/up_rate_limit_us"); f << "0\n"; }
+        }
+        std::string st2 = d2 + "/cpu.state";
+        SysfsAdapter adu(d2);
+        auto mc = make_cpu_controller(st2);
+        auto pr = mc->probe(adu);
+        CHECK(pr.state == CtrlState::Active, "cpu ACTIVE with uag nodes");
+        CHECK(pr.detail.find("uagNodes=3") != std::string::npos, "枚举到三簇 uag 节点");
+        CHECK(slurp(st2).find("UP:policy0=0") != std::string::npos, "基线建档 up=0");
+
+        // POWERSAVE：三簇写 2500
+        EffectivePolicy ps;
+        ps.cpu.uagUpRateUs = 2500;
+        auto r1 = mc->apply(ps, adu, false);
+        CHECK(slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy7/uag/up_rate_limit_us").find("2500") == 0,
+              "policy7 写 2500");
+        CHECK(slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy0/uag/up_rate_limit_us").find("2500") == 0,
+              "policy0 写 2500");
+        CHECK(slurp(st2).find("DIRTY=true") != std::string::npos, "偏离基线 -> DIRTY");
+        CHECK(r1.detail.find("uag:policy3=2500") != std::string::npos, "detail 含各簇写入");
+
+        // 常态（-1 = 回基线）
+        EffectivePolicy daily;
+        mc->apply(daily, adu, false);
+        CHECK(slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy0/uag/up_rate_limit_us").find("0\n") == 0 ||
+              slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy0/uag/up_rate_limit_us") == "0",
+              "常态回基线 0");
+        CHECK(slurp(st2).find("DIRTY=false") != std::string::npos, "回基线 -> CLEAN");
+
+        // 崩溃归还：写偏 + DIRTY + 新实例 probe
+        { std::ofstream f(d2 + "/sys/devices/system/cpu/cpufreq/policy0/uag/up_rate_limit_us"); f << "2500\n"; }
+        { std::ofstream f(d2 + "/sys/devices/system/cpu/cpufreq/policy3/uag/up_rate_limit_us"); f << "2500\n"; }
+        { std::ofstream f(d2 + "/sys/devices/system/cpu/cpufreq/policy7/uag/up_rate_limit_us"); f << "2500\n"; }
+        { std::ofstream f(st2); f << "DIRTY=true\nUP:policy0=0\nUP:policy3=0\nUP:policy7=0\n"; }
+        auto mc2 = make_cpu_controller(st2);
+        auto pr2 = mc2->probe(adu);
+        CHECK(pr2.detail.find("CRASH-RECOVERY uag") != std::string::npos, "CPU 崩溃恢复报告");
+        CHECK(slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy3/uag/up_rate_limit_us").find("0") == 0,
+              "policy3 归还基线");
+        CHECK(slurp(st2).find("DIRTY=false") != std::string::npos, "恢复后 CLEAN");
+        std::printf("[uag-takeover] ok (三簇枚举/场景写/回基线/崩溃归还)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

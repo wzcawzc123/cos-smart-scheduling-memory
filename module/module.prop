@@ -1,6 +1,6 @@
 id=uro
 name=UnifiedRootOptimizer
-version=v0.7.0
-versionCode=700
+version=v0.8.0
+versionCode=800
 author=是你吗薰儿
-description=统一策略引擎：事件采集 + 场景策略 + COSMemory 桥接（enforce 由面板开关控制）
+description=统一策略引擎：事件采集 + 场景策略 + COSMemory/CPU uag 桥接（enforce 由面板开关控制）

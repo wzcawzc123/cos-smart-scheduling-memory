@@ -25,6 +25,7 @@ struct ScenarioTactics {
     bool handover = false;        // §5.5：全量让权，撤销本框架全部写入
     std::string depth;            // 空 = 不干预（交还基线）
     int cooldownSec = -1;         // -1 = 不干预
+    int uagUpRateUs = -1;         // -1 = 不干预（回基线）；CPU 侧升频延迟
 };
 
 // 策略决策输出
@@ -64,7 +65,8 @@ public:
                      d.tactics.handover == lastTactics_.handover &&
                      d.tactics.maxFreqKhz == lastTactics_.maxFreqKhz &&
                      d.tactics.depth == lastTactics_.depth &&
-                     d.tactics.cooldownSec == lastTactics_.cooldownSec);
+                     d.tactics.cooldownSec == lastTactics_.cooldownSec &&
+                     d.tactics.uagUpRateUs == lastTactics_.uagUpRateUs);
         d.changed = !same;
         d.generation = same ? lastGen_ : lastGen_ + 1;
         if (d.changed) {
@@ -143,6 +145,8 @@ private:
                 t.reclaimEnabled = true;
                 t.freezeEnabled = true;
                 t.maxKillPerRound = 3;
+                // CT SDM8G2 powersave 档原值：三簇升频延迟 0→2500us（升频变慢=省电）
+                t.uagUpRateUs = 2500;
                 break;
             case Scenario::BOOT:
                 t.reclaimEnabled = false;   // 保守保护关键进程

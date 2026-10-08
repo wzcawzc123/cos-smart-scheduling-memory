@@ -65,7 +65,8 @@ using ControllerPtr = std::unique_ptr<Controller>;
 ControllerPtr make_memory_controller(const std::string& policyFile = "",
                                      const std::string& cmosJson = "",
                                      const std::string& stateFile = "");
-ControllerPtr make_cpu_controller();
+// cpuStateFile = uag 参数基线档案路径（空 = 不接管 uag 参数）
+ControllerPtr make_cpu_controller(const std::string& cpuStateFile = "");
 ControllerPtr make_gpu_placeholder();
 ControllerPtr make_thermal_placeholder();
 

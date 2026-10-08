@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     reg.add(make_memory_controller(std::string(logdir) + "/policy.memory.txt",
                                    "/data/adb/modules/COSMemory/config/memory.json",
                                    std::string(logdir) + "/bridge.state"));
-    reg.add(make_cpu_controller());
+    reg.add(make_cpu_controller(std::string(logdir) + "/cpu.state"));
     reg.add(make_gpu_placeholder());
     reg.add(make_thermal_placeholder());
     auto probeReps = reg.probe_all(ad);
@@ -141,6 +141,7 @@ int main(int argc, char** argv) {
         base.memory.freezeEnabled   = dec.tactics.freezeEnabled;
         base.memory.maxKillPerRound = dec.tactics.maxKillPerRound;
         base.cpu.maxFreq = dec.tactics.cpuClamp ? dec.tactics.maxFreqKhz : -1;
+        base.cpu.uagUpRateUs = dec.tactics.uagUpRateUs;   // 阶段B-CPU：uag 升频延迟
         EffectivePolicy eff = reg.resolve(base, dec.generation);
 
         char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};

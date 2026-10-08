@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <map>
 #include <unistd.h>
 
 namespace uro {
@@ -395,6 +396,10 @@ private:
 // 不轮询覆写 scaling_max_freq；本机 governor=uag 默认不切换。
 class CpuController final : public Controller {
 public:
+    // cpuStateFile：uag 参数基线档案（UPRATE:<policy>=<值> / DIRTY），空 = 不接管 uag
+    explicit CpuController(std::string cpuStateFile = "")
+        : stateFile_(std::move(cpuStateFile)) {}
+
     const char* name() const override { return "cpu"; }
 
     CtrlReport probe(SysfsAdapter& ad) override {
@@ -412,6 +417,46 @@ public:
             if (auto g = ad.read("/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"))
                 governor_ = *g;   // 本机 uag：仅记录，不干预（§5.2）
         }
+        // ---- uag 参数接管探测（阶段B-CPU）：枚举各簇 up_rate_limit_us 并建基线 ----
+        if (r_.state == CtrlState::Active && !stateFile_.empty()) {
+            uagNodes_.clear();
+            for (int i = 0; i < 10; ++i) {
+                std::string pol = "policy" + std::to_string(i);
+                std::string rel = "/sys/devices/system/cpu/cpufreq/" + pol + "/uag/up_rate_limit_us";
+                if (ad.probe(rel).exists) uagNodes_.push_back({pol, rel});
+            }
+            if (uagNodes_.empty()) {
+                r_.detail += " uag=ABSENT (up_rate_limit_us not found)";
+            } else {
+                // 崩溃残留检查 + 基线档案（DIRTY=1 → 全簇恢复基线）
+                auto st = read_cpu_state(ad);
+                bool dirty = st && st->dirty;
+                std::map<std::string,int> base = st ? st->base : std::map<std::string,int>{};
+                if (base.empty()) {   // 首次/档案缺 → 以现场值建档
+                    for (auto& n : uagNodes_) {
+                        if (auto v = ad.read(n.relPath)) base[n.policy] = atoi(v->c_str());
+                    }
+                    uagBase_ = base;
+                    save_cpu_state(ad, base, false);
+                } else if (dirty) {
+                    std::string rec = "CRASH-RECOVERY uag->";
+                    for (auto& n : uagNodes_) {
+                        auto it = base.find(n.policy);
+                        if (it == base.end()) continue;
+                        std::string d;
+                        WriteOutcome o = ad.write(n.relPath, std::to_string(it->second), false, &d);
+                        rec += n.policy + ":" + std::to_string(it->second) + " ";
+                        (void)o;
+                    }
+                    uagBase_ = base;
+                    save_cpu_state(ad, base, false);
+                    r_.detail += " | " + rec;
+                } else {
+                    uagBase_ = base;
+                }
+                r_.detail += " uagNodes=" + std::to_string(uagNodes_.size());
+            }
+        }
         state_ = r_.state;
         return r_;
     }
@@ -422,10 +467,8 @@ public:
     }
 
     EffectivePolicy desire() const override {
+        // 职责分离：uag/频率约束由场景层（PolicyManager）经 resolve(base) 注入
         EffectivePolicy d;
-        if (mode_ == "powersave") {          // 边界条件：只提交上下限，微调权归 uag
-            d.cpu.maxFreq = maxHint_;        // M3 接能力矩阵后填真实档位
-        }
         d.cpu.launchBoost = false;
         return d;
     }
@@ -442,6 +485,30 @@ public:
         r.detail = std::string("gov=") + governor_ + " maxWrite=" + outcome_name(o) +
                    (detail.empty() ? "" : " (" + detail + ")") +
                    (cpusetOk_ ? "" : " cpuset=SKIP");
+
+        // ---- uag up_rate_limit（阶段B-CPU）：-1 = 回基线，否则写场景值；三簇同步 ----
+        if (!uagNodes_.empty() && !uagBase_.empty()) {
+            bool offAny = false;
+            for (auto& n : uagNodes_) {
+                int baseV = uagBase_.count(n.policy) ? uagBase_[n.policy] : 0;
+                int target = (eff.cpu.uagUpRateUs >= 0) ? eff.cpu.uagUpRateUs : baseV;
+                std::string dd;
+                bool chg = false;
+                WriteOutcome uo = ad.write(n.relPath, std::to_string(target), dryRun, &dd);
+                if (uo == WriteOutcome::Ok || uo == WriteOutcome::DryRun) {
+                    r.detail += " | uag:" + n.policy + "=" + std::to_string(target) +
+                                "(" + outcome_name(uo) + ")";
+                    if (target != baseV) offAny = true;
+                } else {
+                    r.detail += " | uag:" + n.policy + "=" + outcome_name(uo);
+                    if (uo != WriteOutcome::DryRun) offAny = true;
+                }
+            }
+            if (!dryRun) save_cpu_state(ad, uagBase_, offAny);
+            if (eff.cpu.uagUpRateUs >= 0 || offAny)
+                r.detail += " [cpuState->" + std::string(offAny ? "DIRTY" : "CLEAN") + "]";
+        }
+
         if (o == WriteOutcome::Missing || o == WriteOutcome::Denied) {
             r.state = CtrlState::Degraded;
             r.detail += " — cpu class degraded";
@@ -458,11 +525,41 @@ public:
     }
 
 private:
+    struct UagNode { std::string policy, relPath; };
+    struct CpuState { std::map<std::string,int> base; bool dirty = false; };
+
+    std::optional<CpuState> read_cpu_state(SysfsAdapter& ad) const {
+        if (stateFile_.empty()) return std::nullopt;
+        auto txt = ad.read_all(stateFile_);
+        if (!txt || txt->find("DIRTY=") == std::string::npos) return std::nullopt;
+        CpuState s;
+        std::istringstream is(*txt);
+        std::string line;
+        while (std::getline(is, line)) {
+            auto eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+            if (k == "DIRTY") s.dirty = (v == "true");
+            else if (k.rfind("UP:", 0) == 0) s.base[k.substr(3)] = atoi(v.c_str());
+        }
+        return s;
+    }
+    WriteOutcome save_cpu_state(SysfsAdapter& ad, const std::map<std::string,int>& base, bool dirty) {
+        if (stateFile_.empty()) return WriteOutcome::Missing;
+        std::ostringstream os;
+        os << "DIRTY=" << (dirty ? "true" : "false") << "\n";
+        for (auto& kv : base) os << "UP:" << kv.first << "=" << kv.second << "\n";
+        std::string d;
+        return ad.write(stateFile_, os.str(), false, &d);   // 档案永远真写
+    }
+
     CtrlState state_ = CtrlState::Probing;
     CtrlReport r_;
-    std::string mode_ = "balance", governor_ = "?", last_;
+    std::string mode_ = "balance", governor_ = "?", last_, stateFile_;
     bool cpusetOk_ = false, dirty_ = false;
     int maxHint_ = -1;
+    std::vector<UagNode> uagNodes_;
+    std::map<std::string,int> uagBase_;
 };
 
 // ========================== GPU / Thermal 占位（M2′）==========================
@@ -510,7 +607,9 @@ ControllerPtr make_memory_controller(const std::string& policyFile,
                                      const std::string& stateFile) {
     return std::make_unique<MemoryController>(policyFile, cmosJson, stateFile);
 }
-ControllerPtr make_cpu_controller()    { return std::make_unique<CpuController>(); }
+ControllerPtr make_cpu_controller(const std::string& cpuStateFile) {
+    return std::make_unique<CpuController>(cpuStateFile);
+}
 ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuPlaceholder>(); }
 ControllerPtr make_thermal_placeholder(){ return std::make_unique<ThermalPlaceholder>(); }
 
