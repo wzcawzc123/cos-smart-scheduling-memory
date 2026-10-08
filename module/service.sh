@@ -11,7 +11,10 @@ done
 
 LOGDIR=/sdcard/Android/UnifiedRootOptimizer/log
 BIN="$MODDIR/bin/URORuntime"
-[ -x "$BIN" ] || BIN="$MODDIR/URORuntime"
+[ -f "$BIN" ] || BIN="$MODDIR/URORuntime"
+# KSU 开机处理模块时会重置文件权限位（实测 bin/URORuntime 变 644 → -x 失败 → halt）。
+# 不信任解压结果，启动时自行补执行位。
+[ -f "$BIN" ] && chmod 755 "$BIN" 2>/dev/null
 LOG="$LOGDIR/watchdog.log"
 mkdir -p "$LOGDIR" 2>/dev/null
 
@@ -27,7 +30,8 @@ if [ -f "$LOG" ]; then
   [ "$sz" -gt 524288 ] && mv "$LOG" "$LOG.1"
 fi
 
-[ -x "$BIN" ] || { echo "[$(date '+%F %T')] WATCHDOG halt: bin missing $BIN" >> "$LOG"; exit 1; }
+[ -f "$BIN" ] || { echo "[$(date '+%F %T')] WATCHDOG halt: bin missing $BIN" >> "$LOG"; exit 1; }
+[ -x "$BIN" ] || { echo "[$(date '+%F %T')] WATCHDOG halt: chmod failed (no exec bit) $BIN" >> "$LOG"; exit 1; }
 echo "[$(date '+%F %T')] WATCHDOG start bin=$BIN" >> "$LOG"
 
 while :; do
