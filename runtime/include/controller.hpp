@@ -61,8 +61,10 @@ using ControllerPtr = std::unique_ptr<Controller>;
 
 // 工厂（实现见 src/controllers.cpp）：Memory/CPU 为 M2′ 实装，GPU/Thermal 为接口占位。
 // cmosJson = COSMemory config/memory.json 路径（空 = 不启用桥接，桥接能力降级）
+// stateFile = 桥接状态（BASELINE/DIRTY）持久化路径（空 = 不做崩溃残留恢复）
 ControllerPtr make_memory_controller(const std::string& policyFile = "",
-                                     const std::string& cmosJson = "");
+                                     const std::string& cmosJson = "",
+                                     const std::string& stateFile = "");
 ControllerPtr make_cpu_controller();
 ControllerPtr make_gpu_placeholder();
 ControllerPtr make_thermal_placeholder();

@@ -91,6 +91,7 @@ int main() {
     snprintf(t, sizeof t, "/tmp/uro_bridge_%d", (int)getpid());
     std::string dir(t);
     std::string json = setup(dir);
+    std::string stateFile = dir + "/bridge.state";   // M4: 崩溃残留恢复
 
     SysfsAdapter ad(dir);   // root=fake，json 路径带 fake 前缀 → full() 直通
 
@@ -176,6 +177,43 @@ int main() {
         CHECK(full.has_value() && full->find("aggressive") != std::string::npos,
               "read_all returns full multi-line json");
         std::printf("[read-all] ok\n");
+    }
+
+    // ---- 9. 崩溃残留恢复（M4 阶段A：kill -9 后重启必须归还基线）----
+    {
+        // 模拟现场：配置被改偏离基线 + 进程异常退出（state 记录 DIRTY=1）
+        std::string dirtyJson = std::string(kJson);
+        auto p = dirtyJson.find("\"aggressive\": true");
+        dirtyJson.replace(p, 18, "\"aggressive\": false");
+        { std::ofstream f(json); f << dirtyJson; }
+        { std::ofstream f(stateFile); f << "BASELINE=true\nDIRTY=true\n"; }
+
+        SysfsAdapter ad2(dir);
+        auto mc2 = make_memory_controller(dir + "/policy.memory.txt", json, stateFile);
+        CtrlReport pr2 = mc2->probe(ad2);
+        CHECK(pr2.state == CtrlState::Active, "recovery probe stays ACTIVE");
+        CHECK(pr2.detail.find("CRASH-RECOVERY") != std::string::npos,
+              "probe reports CRASH-RECOVERY");
+        std::string now2 = slurp(json);
+        CHECK(now2.find("\"aggressive\": true") != std::string::npos,
+              "dirty config restored to baseline on boot");
+        std::string st2 = slurp(stateFile);
+        CHECK(st2.find("DIRTY=false") != std::string::npos, "state marked CLEAN after recovery");
+        CHECK(st2.find("BASELINE=true") != std::string::npos, "baseline preserved");
+        std::printf("[crash-recovery] ok (DIRTY=1 -> 恢复基线 + 标记干净)\n");
+    }
+
+    // ---- 10. 干净退出不做多余写入（DIRTY=0 时 probe 静默）----
+    {
+        { std::ofstream f(json); f << kJson; }   // aggressive=true == baseline
+        { std::ofstream f(stateFile); f << "BASELINE=true\nDIRTY=false\n"; }
+        SysfsAdapter ad3(dir);
+        auto mc3 = make_memory_controller(dir + "/policy.memory.txt", json, stateFile);
+        CtrlReport pr3 = mc3->probe(ad3);
+        CHECK(pr3.detail.find("CRASH-RECOVERY") == std::string::npos,
+              "clean state -> no recovery action");
+        CHECK(slurp(json).find("\"aggressive\": true") != std::string::npos, "config untouched");
+        std::printf("[clean-boot] ok (干净态静默)\n");
     }
 
     test_no_override(dir);

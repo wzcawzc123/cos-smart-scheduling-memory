@@ -77,7 +77,8 @@ int main(int argc, char** argv) {
     SysfsAdapter ad;
     ControllerRegistry reg;
     reg.add(make_memory_controller(std::string(logdir) + "/policy.memory.txt",
-                                   "/data/adb/modules/COSMemory/config/memory.json"));
+                                   "/data/adb/modules/COSMemory/config/memory.json",
+                                   std::string(logdir) + "/bridge.state"));
     reg.add(make_cpu_controller());
     reg.add(make_gpu_placeholder());
     reg.add(make_thermal_placeholder());

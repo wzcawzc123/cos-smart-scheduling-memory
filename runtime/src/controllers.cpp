@@ -31,8 +31,11 @@ class MemoryController final : public Controller {
 public:
     // policyFile 为空 → 相对 ad 根（测试 fake sysfs）；否则用注入的绝对路径
     // cmosJson 为空 → 不启用 COSMemory 桥接（能力降级）
-    explicit MemoryController(std::string policyFile = "", std::string cmosJson = "")
-        : policyFile_(std::move(policyFile)), cmosJson_(std::move(cmosJson)) {}
+    // stateFile: 桥接状态（BASELINE/DIRTY）持久化——崩溃残留恢复的依据（M4 watchdog 配套）
+    explicit MemoryController(std::string policyFile = "", std::string cmosJson = "",
+                              std::string stateFile = "")
+        : policyFile_(std::move(policyFile)), cmosJson_(std::move(cmosJson)),
+          stateFile_(std::move(stateFile)) {}
 
     const char* name() const override { return "memory"; }
 
@@ -62,9 +65,26 @@ public:
                 bridgeWhy_ = "cosmem json unavailable: " + cj.path + " " + cj.reason;
             } else {
                 bridge_ = true;
-                // 读基线 aggressive（首次）：URO 只在场景需要时偏离，退出必须恢复基线
+                // ---- 崩溃残留一致性检查（M4：异常退出兜底）----
+                // 状态文件 DIRTY=1 表示上次运行把配置改偏离基线且未恢复（异常退出）。
+                // 此处无条件恢复——安全动作，先于任何 enforce 判断。
                 auto cur = read_aggressive(ad);
-                if (cur.has_value()) baselineAgg_ = *cur;
+                bool base = cur.value_or(true);
+                bool dirty = false;
+                if (auto st = read_state(ad); st.has_value()) {
+                    base = st->first; dirty = st->second;
+                }
+                if (dirty && cur.has_value() && *cur != base) {
+                    std::string rd;
+                    WriteOutcome ro = set_aggressive(ad, base, /*dryRun=*/false, &rd);
+                    r_.detail = "CRASH-RECOVERY aggressive " +
+                                std::string(*cur ? "true" : "false") + "->" +
+                                (base ? "true" : "false") + " " + outcome_name(ro);
+                    mark_state(ad, base, false);   // 已恢复 → 干净
+                } else if (!read_state(ad).has_value()) {
+                    mark_state(ad, base, false);   // 首次运行 → 建立基线档案
+                }
+                baselineAgg_ = base;
             }
             if (r_.state == CtrlState::Active && !bridge_) {
                 r_.detail = (r_.detail.empty() ? "" : r_.detail + "; ") + bridgeWhy_;
@@ -118,12 +138,17 @@ public:
             else if (eff.memory.maxKillPerRound > 0) target = true;
             else                                 target = baselineAgg_;
             std::string bdet;
-            WriteOutcome bo = set_aggressive(ad, target, dryRun, &bdet);
+            bool chg = false;
+            WriteOutcome bo = set_aggressive(ad, target, dryRun, &bdet, &chg);
             r.detail += std::string(" | bridge aggressive->") + (target ? "true" : "false") +
                         " " + outcome_name(bo) + " (" + bdet + ")";
             if (bo == WriteOutcome::Missing || bo == WriteOutcome::Denied) {
                 bridge_ = false;   // 桥接能力降级，主 Controller 保持 Active
                 bridgeWhy_ = "bridge lost: " + bdet;
+            } else if (!dryRun) {
+                // 同步 DIRTY 语义：落盘后配置是否偏离基线（异常退出时据此恢复）
+                mark_state(ad, baselineAgg_, target != baselineAgg_);
+                if (chg) r.detail += " [state->" + std::string(target != baselineAgg_ ? "DIRTY" : "CLEAN") + "]";
             }
         } else if (!cmosJson_.empty()) {
             r.detail += " | bridge DEGRADED (" + bridgeWhy_ + ")";
@@ -156,8 +181,31 @@ public:
         return std::nullopt;
     }
 
-    // 设置 aggressive：幂等（同值不写）+ 原子替换 + 读回校验
-    WriteOutcome set_aggressive(SysfsAdapter& ad, bool target, bool dryRun, std::string* detail) {
+    // ---- 桥接状态持久化（BASELINE/DIRTY）----
+    // DIRTY=1 表示"配置被我方改偏离基线且尚未恢复"；崩溃后由 probe 读到并恢复。
+    std::optional<std::pair<bool, bool>> read_state(SysfsAdapter& ad) const {
+        if (stateFile_.empty()) return std::nullopt;
+        auto txt = ad.read_all(stateFile_);
+        if (!txt) return std::nullopt;
+        bool base = true, dirty = false;
+        auto p = txt->find("BASELINE=");
+        if (p != std::string::npos) base = (txt->substr(p + 9, 4) == "true");
+        auto q = txt->find("DIRTY=");
+        if (q != std::string::npos) dirty = (txt->substr(q + 6, 4) == "true");
+        return std::make_pair(base, dirty);
+    }
+    WriteOutcome mark_state(SysfsAdapter& ad, bool base, bool dirty) {
+        if (stateFile_.empty()) return WriteOutcome::Missing;
+        std::string s = std::string("BASELINE=") + (base ? "true" : "false") +
+                        "\nDIRTY=" + (dirty ? "true" : "false") + "\n";
+        std::string d;
+        return ad.write(stateFile_, s, /*dryRun=*/false, &d);   // 状态文件永远真写
+    }
+
+    // 设置 aggressive：幂等（同值不写）+ 原子替换 + 读回校验。changed 输出实际落盘与否
+    WriteOutcome set_aggressive(SysfsAdapter& ad, bool target, bool dryRun,
+                                std::string* detail, bool* changed = nullptr) {
+        if (changed) *changed = false;
         auto cur = read_aggressive(ad);
         if (!cur) {
             if (detail) *detail = "aggressive key not found";
@@ -194,6 +242,7 @@ public:
             if (detail) *detail = "readback semantic mismatch";
             return WriteOutcome::Mismatch;
         }
+        if (changed) *changed = true;
         if (detail) *detail = std::string(*cur ? "true" : "false") + " -> " +
                               (target ? "true" : "false");
         return o;
@@ -202,7 +251,7 @@ public:
 private:
     CtrlState state_ = CtrlState::Probing;
     CtrlReport r_;
-    std::string policyFile_, policyPath_, cmosJson_, mode_ = "balance", last_;
+    std::string policyFile_, policyPath_, cmosJson_, stateFile_, mode_ = "balance", last_;
     bool pressured_ = false;
     bool bridge_ = false;
     std::string bridgeWhy_ = "not probed";
@@ -325,8 +374,9 @@ private:
 };
 
 ControllerPtr make_memory_controller(const std::string& policyFile,
-                                     const std::string& cmosJson) {
-    return std::make_unique<MemoryController>(policyFile, cmosJson);
+                                     const std::string& cmosJson,
+                                     const std::string& stateFile) {
+    return std::make_unique<MemoryController>(policyFile, cmosJson, stateFile);
 }
 ControllerPtr make_cpu_controller()    { return std::make_unique<CpuController>(); }
 ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuPlaceholder>(); }
