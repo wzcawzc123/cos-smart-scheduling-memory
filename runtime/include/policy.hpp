@@ -15,6 +15,12 @@ struct MemoryPolicy {
     bool freezeEnabled = false;
     int  maxKillPerRound = 0;
     std::vector<std::string> protectedPackages;
+    // ---- 阶段B：激进回收调优参数（引擎 reclaim_cycle 每轮热读，可无痛接管）----
+    // 空/-1 = 不干预（交还用户基线）；仅场景明确要求时偏离
+    std::string depth;        // "cached"温和 / "previous"标准 / "service"彻底
+    int cooldownSec = -1;     // 触发冷却（缩短=更频繁重触发）
+    int psiThreshold10x = -1; // PSI 阈值（十分位整数，5.0 → 50；占位本期未启用）
+    int memFloorMb = -1;      // MemAvailable 下限 MB（占位本期未启用）
 };
 
 struct CpuPolicy {

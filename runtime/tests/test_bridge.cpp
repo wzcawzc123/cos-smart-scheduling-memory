@@ -216,6 +216,67 @@ int main() {
         std::printf("[clean-boot] ok (干净态静默)\n");
     }
 
+    // ---- 11. 多字段接管：压力升深、常规回基线（阶段B Memory 真接管）----
+    {
+        std::string j2 = setup(dir + "_multi");
+        SysfsAdapter adm(dir + "_multi");
+        auto mc = make_memory_controller(dir + "_multi/policy.txt", j2,
+                                         dir + "_multi/bridge.state");
+        mc->probe(adm);   // 建基线档案（depth=cached, cool=60）
+
+        // 压力场景：eff 带 depth=service + cooldown=30
+        EffectivePolicy pres;
+        pres.memory.reclaimEnabled = true;
+        pres.memory.maxKillPerRound = 5;
+        pres.memory.depth = "service";
+        pres.memory.cooldownSec = 30;
+        auto r1 = mc->apply(pres, adm, false);
+        std::string s1 = slurp(j2);
+        CHECK(s1.find("\"depth\": \"service\"") != std::string::npos, "pressure -> depth=service");
+        CHECK(s1.find("\"cooldownSec\": 30") != std::string::npos, "pressure -> cooldown=30");
+        CHECK(r1.detail.find("DIRTY") != std::string::npos, "偏离基线 -> DIRTY");
+        std::string st1 = slurp(dir + "_multi/bridge.state");
+        CHECK(st1.find("DIRTY=true") != std::string::npos, "state 记录 DIRTY");
+        CHECK(st1.find("DEPTH=\"cached\"") != std::string::npos, "基线档案 depth=cached 被保留");
+
+        // 常规场景（DAILY）：eff 无 depth/cooldown → 回基线
+        EffectivePolicy daily;
+        daily.memory.reclaimEnabled = true;
+        daily.memory.maxKillPerRound = 0;
+        mc->apply(daily, adm, false);
+        std::string s2 = slurp(j2);
+        CHECK(s2.find("\"depth\": \"cached\"") != std::string::npos, "DAILY -> depth 回基线");
+        CHECK(s2.find("\"cooldownSec\": 60") != std::string::npos, "DAILY -> cooldown 回基线");
+        std::string st2 = slurp(dir + "_multi/bridge.state");
+        CHECK(st2.find("DIRTY=false") != std::string::npos, "回基线后 CLEAN");
+        std::printf("[multi-field] ok (压力升深 / 常规回基线)\n");
+    }
+
+    // ---- 12. 崩溃恢复含 depth（DIRTY + depth 偏离 → 全量归还）----
+    {
+        std::string d2 = dir + "_crash2";
+        std::string j2 = setup(d2);
+        // 构造现场：depth 被改成 service（偏离 cached）+ DIRTY=1
+        {
+            std::ifstream f(j2); std::ostringstream ss; ss << f.rdbuf();
+            std::string c = ss.str();
+            auto p = c.find("\"depth\": \"cached\"");
+            if (p != std::string::npos) c.replace(p, 18, "\"depth\": \"service\"");
+            std::ofstream o(j2); o << c;
+        }
+        { std::ofstream f(d2 + "/bridge.state");
+          f << "BASELINE=true\nDIRTY=true\nDEPTH=\"cached\"\nCOOL=60\n"; }
+        SysfsAdapter adm(d2);
+        auto mc = make_memory_controller(d2 + "/p.txt", j2, d2 + "/bridge.state");
+        auto r = mc->probe(adm);
+        CHECK(r.detail.find("CRASH-RECOVERY") != std::string::npos, "报告 CRASH-RECOVERY");
+        CHECK(slurp(j2).find("\"depth\": \"cached\"") != std::string::npos,
+              "depth 偏离被恢复到基线");
+        CHECK(slurp(d2 + "/bridge.state").find("DIRTY=false") != std::string::npos,
+              "恢复后 CLEAN");
+        std::printf("[crash-depth] ok (多字段崩溃归还)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

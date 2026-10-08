@@ -3,6 +3,7 @@
 #include "controller.hpp"
 #include <fstream>
 #include <sstream>
+#include <cstring>
 #include <unistd.h>
 
 namespace uro {
@@ -66,25 +67,49 @@ public:
             } else {
                 bridge_ = true;
                 // ---- 崩溃残留一致性检查（M4：异常退出兜底）----
-                // 状态文件 DIRTY=1 表示上次运行把配置改偏离基线且未恢复（异常退出）。
-                // 此处无条件恢复——安全动作，先于任何 enforce 判断。
-                auto cur = read_aggressive(ad);
-                bool base = cur.value_or(true);
-                bool dirty = false;
-                if (auto st = read_state(ad); st.has_value()) {
-                    base = st->first; dirty = st->second;
+                // DIRTY=1 → 上次改偏离未恢复 → 全量字段写回基线档案（无条件，先于 enforce 判断）
+                auto curAgg = read_aggressive(ad);
+                auto curDepth = read_reclaim_field(ad, "depth");
+                auto curCool = read_reclaim_field(ad, "cooldownSec");
+                bool firstRun = !read_state(ad).has_value();
+                BridgeState st = read_state(ad).value_or(BridgeState{});
+                if (firstRun) {   // 首次运行：以当前配置建立基线档案
+                    st.baselineAgg = curAgg.value_or(true);
+                    st.dirty = false;
                 }
-                if (dirty && cur.has_value() && *cur != base) {
-                    std::string rd;
-                    WriteOutcome ro = set_aggressive(ad, base, /*dryRun=*/false, &rd);
-                    r_.detail = "CRASH-RECOVERY aggressive " +
-                                std::string(*cur ? "true" : "false") + "->" +
-                                (base ? "true" : "false") + " " + outcome_name(ro);
-                    mark_state(ad, base, false);   // 已恢复 → 干净
-                } else if (!read_state(ad).has_value()) {
-                    mark_state(ad, base, false);   // 首次运行 → 建立基线档案
+                if (firstRun || st.depth.empty() || st.cool < 0) {
+                    // 档案缺字段（含 v0.6.0 旧格式 BASELINE/DIRTY 两行的升级路径）→ 用当前值补齐，
+                    // 否则 depth/cooldown 因无基线而静默永不接管。
+                    // 注意保留 dirty 标志（补档案与恢复是顺序关系，不能互斥）
+                    if (firstRun) { st.baselineAgg = curAgg.value_or(true); st.dirty = false; }
+                    if (st.depth.empty()) st.depth = curDepth.value_or("\"cached\"");
+                    if (st.cool < 0) {
+                        auto cv = curCool.value_or("60");
+                        st.cool = cv.empty() ? 60 : atoi(cv.c_str());
+                    }
+                    mark_state(ad, st);
                 }
-                baselineAgg_ = base;
+                if (st.dirty) {
+                    std::string rd, rec;
+                    WriteOutcome ro = set_aggressive(ad, st.baselineAgg, false, &rd);
+                    rec = "CRASH-RECOVERY agg->" + std::string(st.baselineAgg ? "true" : "false");
+                    if (!st.depth.empty()) {
+                        std::string d2;
+                        if (set_reclaim_field(ad, "depth", st.depth, false, &d2) == WriteOutcome::Ok)
+                            rec += " depth->" + st.depth;
+                    }
+                    if (st.cool >= 0) {
+                        std::string d2;
+                        if (set_reclaim_field(ad, "cooldownSec", std::to_string(st.cool), false, &d2) == WriteOutcome::Ok)
+                            rec += " cool->" + std::to_string(st.cool);
+                    }
+                    r_.detail = rec + " " + outcome_name(ro);
+                    st.dirty = false;
+                    mark_state(ad, st);
+                }
+                baselineAgg_ = st.baselineAgg;
+                baselineDepth_ = st.depth;
+                baselineCool_ = st.cool;
             }
             if (r_.state == CtrlState::Active && !bridge_) {
                 r_.detail = (r_.detail.empty() ? "" : r_.detail + "; ") + bridgeWhy_;
@@ -133,22 +158,54 @@ public:
         //   reclaimEnabled && maxKill>0     → true（压力/省电场景要求激进）
         //   reclaimEnabled && maxKill==0    → 恢复用户基线（常规态不干预面板配置）
         if (bridge_ && !cmosJson_.empty()) {
-            bool target;
-            if (!eff.memory.reclaimEnabled)      target = false;
-            else if (eff.memory.maxKillPerRound > 0) target = true;
-            else                                 target = baselineAgg_;
+            bool aggT;
+            if (!eff.memory.reclaimEnabled)      aggT = false;
+            else if (eff.memory.maxKillPerRound > 0) aggT = true;
+            else                                 aggT = baselineAgg_;
             std::string bdet;
             bool chg = false;
-            WriteOutcome bo = set_aggressive(ad, target, dryRun, &bdet, &chg);
-            r.detail += std::string(" | bridge aggressive->") + (target ? "true" : "false") +
+            WriteOutcome bo = set_aggressive(ad, aggT, dryRun, &bdet, &chg);
+            r.detail += std::string(" | bridge aggressive->") + (aggT ? "true" : "false") +
                         " " + outcome_name(bo) + " (" + bdet + ")";
             if (bo == WriteOutcome::Missing || bo == WriteOutcome::Denied) {
                 bridge_ = false;   // 桥接能力降级，主 Controller 保持 Active
                 bridgeWhy_ = "bridge lost: " + bdet;
             } else if (!dryRun) {
-                // 同步 DIRTY 语义：落盘后配置是否偏离基线（异常退出时据此恢复）
-                mark_state(ad, baselineAgg_, target != baselineAgg_);
-                if (chg) r.detail += " [state->" + std::string(target != baselineAgg_ ? "DIRTY" : "CLEAN") + "]";
+                bool offAgg = (aggT != baselineAgg_);
+                bool offDepth = false, offCool = false;
+                // depth：场景给了就用，没给（空）= 回基线
+                if (!baselineDepth_.empty()) {
+                    std::string dT = eff.memory.depth.empty() ? baselineDepth_
+                                                              : "\"" + eff.memory.depth + "\"";
+                    std::string dd;
+                    bool dchg = false;
+                    auto o = set_reclaim_field(ad, "depth", dT, false, &dd, &dchg);
+                    if (o == WriteOutcome::Ok) {
+                        r.detail += " | depth " + dd;
+                        offDepth = (dT != baselineDepth_);
+                    } else { offDepth = true; r.detail += " | depth FAILED(" + dd + ")"; }
+                }
+                // cooldown：场景给了就用，没给 = 回基线
+                if (baselineCool_ >= 0) {
+                    std::string cT = eff.memory.cooldownSec >= 0
+                                     ? std::to_string(eff.memory.cooldownSec)
+                                     : std::to_string(baselineCool_);
+                    std::string dd;
+                    bool cchg = false;
+                    auto o = set_reclaim_field(ad, "cooldownSec", cT, false, &dd, &cchg);
+                    if (o == WriteOutcome::Ok) {
+                        r.detail += " | cool " + dd;
+                        offCool = (cT != std::to_string(baselineCool_));
+                    } else { offCool = true; r.detail += " | cool FAILED(" + dd + ")"; }
+                }
+                BridgeState st = read_state(ad).value_or(BridgeState{});
+                st.baselineAgg = baselineAgg_;
+                st.depth = baselineDepth_;
+                st.cool = baselineCool_;
+                st.dirty = offAgg || offDepth || offCool;
+                mark_state(ad, st);
+                if (chg || offDepth || offCool)
+                    r.detail += " [state->" + std::string(st.dirty ? "DIRTY" : "CLEAN") + "]";
             }
         } else if (!cmosJson_.empty()) {
             r.detail += " | bridge DEGRADED (" + bridgeWhy_ + ")";
@@ -181,25 +238,98 @@ public:
         return std::nullopt;
     }
 
-    // ---- 桥接状态持久化（BASELINE/DIRTY）----
-    // DIRTY=1 表示"配置被我方改偏离基线且尚未恢复"；崩溃后由 probe 读到并恢复。
-    std::optional<std::pair<bool, bool>> read_state(SysfsAdapter& ad) const {
+    // ---- 桥接状态持久化（多字段基线档案 + DIRTY）----
+    // DIRTY=1 表示"任一字段被我方改偏离基线且未恢复"；崩溃后由 probe 读到并全量恢复。
+    struct BridgeState {
+        bool baselineAgg = true;
+        bool dirty = false;
+        std::string depth;   // 空 = 无档案（首次）
+        int cool = -1;
+    };
+    std::optional<BridgeState> read_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
         auto txt = ad.read_all(stateFile_);
         if (!txt) return std::nullopt;
-        bool base = true, dirty = false;
-        auto p = txt->find("BASELINE=");
-        if (p != std::string::npos) base = (txt->substr(p + 9, 4) == "true");
-        auto q = txt->find("DIRTY=");
-        if (q != std::string::npos) dirty = (txt->substr(q + 6, 4) == "true");
-        return std::make_pair(base, dirty);
+        if (txt->find("BASELINE=") == std::string::npos) return std::nullopt;
+        BridgeState s;
+        auto g = [&](const char* k, std::string& out) {
+            auto p = txt->find(k);
+            if (p == std::string::npos) return;
+            auto e = txt->find('\n', p);
+            out = txt->substr(p + strlen(k), (e == std::string::npos ? txt->size() : e) - p - strlen(k));
+        };
+        std::string v;
+        g("BASELINE=", v); s.baselineAgg = (v == "true");
+        v.clear(); g("DIRTY=", v); s.dirty = (v == "true");
+        v.clear(); g("DEPTH=", v); s.depth = v;
+        v.clear(); g("COOL=", v); s.cool = v.empty() ? -1 : atoi(v.c_str());
+        return s;
     }
-    WriteOutcome mark_state(SysfsAdapter& ad, bool base, bool dirty) {
+    WriteOutcome mark_state(SysfsAdapter& ad, const BridgeState& s) {
         if (stateFile_.empty()) return WriteOutcome::Missing;
-        std::string s = std::string("BASELINE=") + (base ? "true" : "false") +
-                        "\nDIRTY=" + (dirty ? "true" : "false") + "\n";
+        std::string t = std::string("BASELINE=") + (s.baselineAgg ? "true" : "false") +
+                        "\nDIRTY=" + (s.dirty ? "true" : "false") +
+                        "\nDEPTH=" + s.depth +
+                        "\nCOOL=" + std::to_string(s.cool) + "\n";
         std::string d;
-        return ad.write(stateFile_, s, /*dryRun=*/false, &d);   // 状态文件永远真写
+        return ad.write(stateFile_, t, /*dryRun=*/false, &d);   // 状态文件永远真写
+    }
+
+    // ---- reclaim 节内任意字段读写（jsonLit 为 JSON 字面量：带引号的串或裸数字）----
+    std::optional<std::string> read_reclaim_field(SysfsAdapter& ad, const char* key) const {
+        auto txt = ad.read_all(cmosJson_);
+        if (!txt) return std::nullopt;
+        std::string k = std::string("\"") + key + "\"";
+        auto p = txt->find(k);
+        if (p == std::string::npos) return std::nullopt;
+        auto colon = txt->find(':', p + k.size());
+        if (colon == std::string::npos) return std::nullopt;
+        auto v = colon + 1;
+        while (v < txt->size() && (*txt)[v] == ' ') ++v;
+        auto end = txt->find_first_of(",}\n", v);
+        std::string val = txt->substr(v, (end == std::string::npos ? txt->size() : end) - v);
+        // 去尾部空白
+        auto t = val.find_last_not_of(" \t\r");
+        return t == std::string::npos ? std::string("") : val.substr(0, t + 1);
+    }
+
+    WriteOutcome set_reclaim_field(SysfsAdapter& ad, const char* key,
+                                   const std::string& jsonLit, bool dryRun,
+                                   std::string* detail, bool* changed = nullptr) {
+        if (changed) *changed = false;
+        auto cur = read_reclaim_field(ad, key);
+        if (!cur) { if (detail) *detail = std::string(key) + " key not found"; return WriteOutcome::Missing; }
+        if (*cur == jsonLit) {
+            if (detail) *detail = std::string(key) + " already " + jsonLit + " (no-op)";
+            return WriteOutcome::Ok;
+        }
+        std::string neu;
+        {   // 读原始字节（字节保真：改别的配置一字不动，含尾换行）
+            std::ifstream rf(ad.full(cmosJson_), std::ios::binary);
+            std::ostringstream ss; ss << rf.rdbuf(); neu = ss.str();
+        }
+        if (neu.empty()) { if (detail) *detail = "raw read failed"; return WriteOutcome::Missing; }
+        std::string k = std::string("\"") + key + "\"";
+        auto p = neu.find(k);
+        if (p == std::string::npos) { if (detail) *detail = "key lost"; return WriteOutcome::Missing; }
+        auto colon = neu.find(':', p + k.size());
+        auto v = colon + 1;
+        while (v < neu.size() && (neu[v] == ' ')) ++v;
+        auto end = neu.find_first_of(",}\n", v);
+        if (colon == std::string::npos || end == std::string::npos) {
+            if (detail) *detail = "value span not parseable"; return WriteOutcome::Mismatch;
+        }
+        neu.replace(v, end - v, jsonLit);
+        WriteOutcome o = ad.write(cmosJson_, neu, dryRun, detail);
+        if (o != WriteOutcome::Ok) return o;
+        auto back = read_reclaim_field(ad, key);
+        if (!back || *back != jsonLit) {
+            if (detail) *detail = std::string(key) + " readback mismatch";
+            return WriteOutcome::Mismatch;
+        }
+        if (changed) *changed = true;
+        if (detail) *detail = std::string(key) + ": " + std::string(cur->empty() ? "?" : *cur) + " -> " + jsonLit;
+        return o;
     }
 
     // 设置 aggressive：幂等（同值不写）+ 原子替换 + 读回校验。changed 输出实际落盘与否
@@ -256,6 +386,8 @@ private:
     bool bridge_ = false;
     std::string bridgeWhy_ = "not probed";
     bool baselineAgg_ = false;
+    std::string baselineDepth_;   // 含 JSON 引号，如 "\"cached\""；空 = 无档案
+    int baselineCool_ = -1;
 };
 
 // ============================= CPU Controller =============================

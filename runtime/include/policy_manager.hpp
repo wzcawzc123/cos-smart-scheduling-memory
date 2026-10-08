@@ -23,6 +23,8 @@ struct ScenarioTactics {
     bool cpuClamp = false;        // 是否提交 CPU 上限约束
     int  maxFreqKhz = -1;
     bool handover = false;        // §5.5：全量让权，撤销本框架全部写入
+    std::string depth;            // 空 = 不干预（交还基线）
+    int cooldownSec = -1;         // -1 = 不干预
 };
 
 // 策略决策输出
@@ -60,7 +62,9 @@ public:
                      d.tactics.freezeEnabled == lastTactics_.freezeEnabled &&
                      d.tactics.maxKillPerRound == lastTactics_.maxKillPerRound &&
                      d.tactics.handover == lastTactics_.handover &&
-                     d.tactics.maxFreqKhz == lastTactics_.maxFreqKhz);
+                     d.tactics.maxFreqKhz == lastTactics_.maxFreqKhz &&
+                     d.tactics.depth == lastTactics_.depth &&
+                     d.tactics.cooldownSec == lastTactics_.cooldownSec);
         d.changed = !same;
         d.generation = same ? lastGen_ : lastGen_ + 1;
         if (d.changed) {
@@ -131,6 +135,8 @@ private:
                 t.reclaimEnabled = true;    // 提升回收优先级
                 t.freezeEnabled = true;
                 t.maxKillPerRound = 5;
+                t.depth = "service";        // 彻底档：连空服务一起清（引擎热读）
+                t.cooldownSec = 30;         // 缩短冷却：压力期允许更频繁重触发
                 t.cpuClamp = false;         // §3.3 允许降级但 M3 不主动 clamp
                 break;
             case Scenario::POWERSAVE:
