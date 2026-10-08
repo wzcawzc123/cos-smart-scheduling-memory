@@ -1,4 +1,5 @@
 #!/system/bin/sh
+pgrep -f power_sampler.sh >/dev/null 2>&1 || setsid sh /data/adb/modules/uro/bin/power_sampler.sh >/dev/null 2>&1 &
 # uro/service.sh — 开机自启 + watchdog（M4 阶段A）
 # 职责：boot 完成后拉起 URORuntime；进程死亡 30s 内补拉。
 # 崩溃残留恢复不在这里做 —— URORuntime 自身 probe 时读 bridge.state 的 DIRTY=1 并恢复基线。

@@ -32,6 +32,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     else:
         print("WARN: 内嵌 COSMemory 包缺失 -> 联动降级")
     z.write(BIN, "bin/URORuntime")
+    z.write(MOD / "bin" / "power_sampler.sh", "bin/power_sampler.sh")   # M5 电量补救采样
     # 可执行权限位（KSU 解压后按此还原）
     for n in ("service.sh", "uninstall.sh", "bin/URORuntime"):
         i = z.getinfo(n)
