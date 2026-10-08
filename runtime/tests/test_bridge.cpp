@@ -331,6 +331,36 @@ int main() {
         std::printf("[uag-takeover] ok (三簇枚举/场景写/回基线/崩溃归还)\n");
     }
 
+    // ---- 14. two-phase 事务：PREPARE 态崩溃也恢复（写前记意图，零崩溃窗口）----
+    {
+        std::string d2 = dir + "_2pc";
+        std::string j2 = setup(d2);
+        // 构造 PREPARE 现场：意图已记、写入未完成（或完成一半）
+        { std::ifstream f(j2); std::ostringstream ss; ss << f.rdbuf();
+          std::string c = ss.str();
+          auto p = c.find("\"depth\": \"cached\"");
+          if (p != std::string::npos) c.replace(p, 18, "\"depth\": \"service\"");
+          std::ofstream o(j2); o << c; }
+        { std::ofstream f(d2 + "/bridge.state");
+          f << "BASELINE=true\nDIRTY=true\nDEPTH=\"cached\"\nCOOL=60\nPHASE=PREPARE\n"; }
+        SysfsAdapter adp(d2);
+        auto mc = make_memory_controller(d2 + "/p.txt", j2, d2 + "/bridge.state");
+        auto r = mc->probe(adp);
+        CHECK(r.detail.find("CRASH-RECOVERY") != std::string::npos, "PREPARE 态同样触发恢复");
+        CHECK(slurp(j2).find("\"depth\": \"cached\"") != std::string::npos,
+              "PREPARE 崩溃 -> depth 归还基线");
+        CHECK(slurp(d2 + "/bridge.state").find("DIRTY=false") != std::string::npos,
+              "PREPARE 恢复后 CLEAN");
+        // 正常 apply 落 COMMIT 标记
+        EffectivePolicy ep;
+        ep.memory.reclaimEnabled = true;
+        ep.memory.maxKillPerRound = 0;
+        mc->apply(ep, adp, false);
+        CHECK(slurp(d2 + "/bridge.state").find("PHASE=COMMIT") != std::string::npos,
+              "正常写后标记 COMMIT");
+        std::printf("[2pc] ok (PREPARE崩溃恢复/COMMIT标记)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

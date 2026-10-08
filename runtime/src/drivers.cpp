@@ -142,13 +142,30 @@ void fg_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& 
     }
 }
 
+// 屏幕状态共享（阶段①：dumpsys 巡检自适应）——screen_driver 每轮更新，
+// focus_driver 据此在熄屏时完全跳过 dumpsys window（省 2% 单核常驻，§见 focus 段注释）
+static std::atomic<bool> g_screen_on{true};
+
 // ---------- A'. ForegroundChanged（补盲扳机：mCurrentFocus 巡检） ----------
 // 修 M1 影子对账 v2 §2-A1：systemui 常驻 top-app cgroup，下拉通知栏/锁屏时
 // cgroup 成员无变化 -> inotify 永不触发（22 条直接 missed + 8 条恢复事件下游）。
 // dumpsys window 单次实测 14-20ms，1s 巡检的常驻成本约 2% 单核占空。
+// 自适应（阶段①）：熄屏时无焦点语义（用户不能操作、前台不会因交互变化），
+// 跳过 dumpsys、每 2s 醒一次等亮屏；恢复后第一轮 diff 自然补推焦点变化（lastRaw 保留）。
 void focus_driver(EventQueue& q, DriverPaths p, FgSharedPtr fg, std::atomic<bool>& run) {
     std::string lastRaw;   // 本源上次看到的原始焦点串（避免每个周期都解析）
     while (run) {
+        if (!g_screen_on.load(std::memory_order_relaxed)) {
+            static bool muted = false;   // 暂停/恢复日志各打一次（防 2s 循环刷屏）
+            if (!muted) { fprintf(stderr, "[URO-fg] screen-off: dumpsys巡检暂停(自适应)\n"); muted = true; }
+            bool resumed = false;
+            for (int i = 0; run && i < 20; ++i) {   // 熄屏期 2s 一醒（仅读共享标志）
+                usleep(100 * 1000);
+                if (g_screen_on.load(std::memory_order_relaxed)) { resumed = true; break; }
+            }
+            if (resumed) { fprintf(stderr, "[URO-fg] screen-on: 恢复 1s 巡检\n"); muted = false; }
+            continue;   // 恢复后走正常轮：read_focus_raw 与 lastRaw diff 补推
+        }
         std::string raw = read_focus_raw();
         if (!raw.empty() && raw != lastRaw) {
             lastRaw = raw;
@@ -245,6 +262,7 @@ void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
         // Oplus 实测语义（2026-10-08）：亮屏=2、熄屏=1（原始代码判 raw==0 为灭 → 熄屏值 1 被
         // 误判为亮，ScreenChanged(off) 永不触发）。按"2=亮，其余=灭"判定。
         int st = (raw == 2) ? 1 : 0;
+        g_screen_on.store(st != 0, std::memory_order_relaxed);   // 供 focus_driver 自适应
         if (st != last) {
             if (last != -2) q.push({EventType::ScreenChanged, now_ms(), 0, "screen-prop", st ? "on" : "off"});
             last = st;

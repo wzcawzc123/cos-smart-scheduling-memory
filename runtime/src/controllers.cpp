@@ -163,6 +163,17 @@ public:
             if (!eff.memory.reclaimEnabled)      aggT = false;
             else if (eff.memory.maxKillPerRound > 0) aggT = true;
             else                                 aggT = baselineAgg_;
+            // two-phase 事务：写前先记意图(PREPARE)——此点后任何崩溃都可由
+            // probe 读 DIRTY 恢复；旧时序(写后才记)存在"写成功~记账间崩溃=标记丢失"窗口
+            if (!dryRun) {
+                BridgeState pre = read_state(ad).value_or(BridgeState{});
+                pre.baselineAgg = baselineAgg_;
+                if (!baselineDepth_.empty()) pre.depth = baselineDepth_;
+                if (baselineCool_ >= 0) pre.cool = baselineCool_;
+                pre.dirty = true;
+                pre.phase = "PREPARE";
+                mark_state(ad, pre);
+            }
             std::string bdet;
             bool chg = false;
             WriteOutcome bo = set_aggressive(ad, aggT, dryRun, &bdet, &chg);
@@ -204,6 +215,7 @@ public:
                 st.depth = baselineDepth_;
                 st.cool = baselineCool_;
                 st.dirty = offAgg || offDepth || offCool;
+                st.phase = "COMMIT";
                 mark_state(ad, st);
                 if (chg || offDepth || offCool)
                     r.detail += " [state->" + std::string(st.dirty ? "DIRTY" : "CLEAN") + "]";
@@ -246,6 +258,7 @@ public:
         bool dirty = false;
         std::string depth;   // 空 = 无档案（首次）
         int cool = -1;
+        std::string phase;   // PREPARE(写前意图) / COMMIT(写后完成) —— two-phase 事务标记
     };
     std::optional<BridgeState> read_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
@@ -264,6 +277,7 @@ public:
         v.clear(); g("DIRTY=", v); s.dirty = (v == "true");
         v.clear(); g("DEPTH=", v); s.depth = v;
         v.clear(); g("COOL=", v); s.cool = v.empty() ? -1 : atoi(v.c_str());
+        v.clear(); g("PHASE=", v); s.phase = v.empty() ? "COMMIT" : v;
         return s;
     }
     WriteOutcome mark_state(SysfsAdapter& ad, const BridgeState& s) {
@@ -271,7 +285,8 @@ public:
         std::string t = std::string("BASELINE=") + (s.baselineAgg ? "true" : "false") +
                         "\nDIRTY=" + (s.dirty ? "true" : "false") +
                         "\nDEPTH=" + s.depth +
-                        "\nCOOL=" + std::to_string(s.cool) + "\n";
+                        "\nCOOL=" + std::to_string(s.cool) +
+                        "\nPHASE=" + (s.phase.empty() ? "COMMIT" : s.phase) + "\n";
         std::string d;
         return ad.write(stateFile_, t, /*dryRun=*/false, &d);   // 状态文件永远真写
     }
@@ -505,6 +520,12 @@ public:
         // ---- uag up/down_rate_limit（阶段B-CPU + 阶段2）：-1=回基线，否则写场景值 ----
         if (!uagNodes_.empty() && !uagBase_.empty()) {
             bool offAny = false;
+            if (!dryRun) {   // two-phase：写前记意图（同 Memory 侧，零崩溃窗口）
+                CpuState pre;
+                pre.base = uagBase_; pre.baseDown = downBase_;
+                pre.dirty = true; pre.phase = "PREPARE";
+                save_cpu_state(ad, pre);
+            }
             auto runGroup = [&](const char* tag, const std::string UagNode::*fld,
                                 int effVal, const std::map<std::string,int>& baseM) {
                 for (auto& n : uagNodes_) {
@@ -528,7 +549,8 @@ public:
             runGroup("up", &UagNode::upPath, eff.cpu.uagUpRateUs, uagBase_);
             runGroup("dn", &UagNode::downPath, eff.cpu.uagDownRateUs, downBase_);
             if (!dryRun) {
-                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_; cs.dirty = offAny;
+                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_;
+                cs.dirty = offAny; cs.phase = "COMMIT";
                 save_cpu_state(ad, cs);
             }
             if (eff.cpu.uagUpRateUs >= 0 || eff.cpu.uagDownRateUs >= 0 || offAny)
@@ -552,7 +574,7 @@ public:
 
 private:
     struct UagNode { std::string policy, upPath, downPath; };
-    struct CpuState { std::map<std::string,int> base, baseDown; bool dirty = false; };
+    struct CpuState { std::map<std::string,int> base, baseDown; bool dirty = false; std::string phase; };
 
     std::optional<CpuState> read_cpu_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
@@ -566,6 +588,7 @@ private:
             if (eq == std::string::npos) continue;
             std::string k = line.substr(0, eq), v = line.substr(eq + 1);
             if (k == "DIRTY") s.dirty = (v == "true");
+            else if (k == "PHASE") s.phase = v;
             else if (k.rfind("UP:", 0) == 0) s.base[k.substr(3)] = atoi(v.c_str());
             else if (k.rfind("DOWN:", 0) == 0) s.baseDown[k.substr(5)] = atoi(v.c_str());
         }
@@ -574,7 +597,8 @@ private:
     WriteOutcome save_cpu_state(SysfsAdapter& ad, const CpuState& cs) {
         if (stateFile_.empty()) return WriteOutcome::Missing;
         std::ostringstream os;
-        os << "DIRTY=" << (cs.dirty ? "true" : "false") << "\n";
+        os << "DIRTY=" << (cs.dirty ? "true" : "false") << "\n"
+           << "PHASE=" << (cs.phase.empty() ? "COMMIT" : cs.phase) << "\n";
         for (auto& kv : cs.base) os << "UP:" << kv.first << "=" << kv.second << "\n";
         for (auto& kv : cs.baseDown) os << "DOWN:" << kv.first << "=" << kv.second << "\n";
         std::string d;
