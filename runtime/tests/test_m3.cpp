@@ -47,10 +47,15 @@ static void test_scenario(const std::string& dir) {
     CHECK(!d.tactics.reclaimEnabled, "GAME -> reclaim paused (仅白名单保护)");
     CHECK(d.tactics.maxFreqKhz < 0, "GAME -> no CPU clamp (baseline 撤权)");
 
-    // DAILY：普通 App
+    // AmSwitch：刚切 App = FAST 过渡（2.5s 窗口；CT 场景机同款"最激进档"）
     d = pm.decide(st_with("com.tencent.mm", "balance"),
                   mk(EventType::ForegroundChanged, "com.tencent.mm"), 2000);
-    CHECK(d.scenario == Scenario::BALANCE, "normal fg -> DAILY");
+    CHECK(d.scenario == Scenario::FAST, "fg switch -> FAST (AmSwitch 2.5s)");
+    CHECK(d.tactics.uagDownRateUs == 150000, "FAST -> down 150ms");
+    // 窗口过期后回 BALANCE（空闲 tick 触发的真实路径）
+    d = pm.decide(st_with("com.tencent.mm", "balance"),
+                  mk(EventType::ConfigChanged, "idle-tick"), 5000);
+    CHECK(d.scenario == Scenario::BALANCE, "switch window expired -> BALANCE");
     CHECK(!d.tactics.handover, "DAILY -> no handover");
 
     // ---- 熄屏自动省电（场景自动映射：亮屏日用 / 熄屏省电）----
@@ -114,8 +119,9 @@ static void test_scenario(const std::string& dir) {
     }
 
     // v0.11 四档自治：系统 mode.txt 不再影响档位（用户不依赖系统省电/高性能设置）
+    // （时间放在 FG 后 2.5s+ 以免撞 AmSwitch FAST 窗口）
     d = pm.decide(st_with("com.tencent.mm", "powersave"),
-                  mk(EventType::ModeChanged, "powersave"), 3000);
+                  mk(EventType::ModeChanged, "powersave"), 5000);
     CHECK(d.scenario == Scenario::BALANCE, "system mode IGNORED (v0.11 四档自治)");
 
     // MEMORY_PRESSURE：压力事件
@@ -189,8 +195,8 @@ static void test_no_oscillation() {
     Decision back = pm.decide(st, mk(EventType::ForegroundChanged, "com.tencent.mm"), now + 1000);
     CHECK(back.scenario == Scenario::MEMORY_PRESSURE, "hysteresis blocks immediate exit");
 
-    // 超过滞回窗口后才回落
-    Decision later = pm.decide(st, mk(EventType::ForegroundChanged, "com.tencent.mm"),
+    // 超过滞回窗口后才回落（用 idle 事件避免刷 AmSwitch FAST 窗口）
+    Decision later = pm.decide(st, mk(EventType::ConfigChanged, "idle-tick"),
                                now + 1000 + 16000);
     CHECK(later.scenario == Scenario::BALANCE, "after hysteresis -> falls back to DAILY");
     CHECK(later.changed, "fallback produces one generation bump");
@@ -209,9 +215,9 @@ static void test_lease() {
     CHECK(!pm.lease_expired(100000 + 59000), "lease alive before deadline");
     CHECK(pm.lease_expired(100000 + 61000), "lease expired after deadline");
 
-    // 过期 → 清压力态 → 下次 decide 回落
+    // 过期 → 清压力态 → 下次 decide 回落（idle 事件避免刷 AmSwitch FAST 窗口）
     pm.set_pressure_time(0);
-    Decision back = pm.decide(st, mk(EventType::ForegroundChanged, "com.tencent.mm"),
+    Decision back = pm.decide(st, mk(EventType::ConfigChanged, "idle-tick"),
                               100000 + 61000);
     CHECK(back.scenario == Scenario::BALANCE, "expired lease -> fallback scenario");
 

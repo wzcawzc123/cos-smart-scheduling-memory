@@ -48,6 +48,8 @@ public:
     Decision decide(const GlobalState& st, const Event& e, uint64_t now_ms) {
         // Touch 感知（第2步）：down/up 边沿都刷新触摸时间（1.5s 滞回窗口由空闲 tick 触发回落）
         if (e.type == EventType::TouchChanged) lastTouchMs_ = now_ms;
+        // AmSwitch 感知（第2步·CT 搬运）：前台切换刷新过渡窗口（2.5s FAST，空闲 tick 回落）
+        if (e.type == EventType::ForegroundChanged) lastSwitchMs_ = now_ms;
         Scenario cand = pick_scenario(st, e, now_ms);
 
         // --- 滞回（防震荡）：压力场景退出需要持续无压力达 hysteresisMs ---
@@ -127,6 +129,13 @@ private:
         if (st.generation <= 1 && e.source.find("boot") != std::string::npos) {
             why_ = "bootstrap"; return Scenario::BOOT;
         }
+        // AmSwitch 感知（CT 场景机同款优先级：过渡期压过 Touch——刚切 App 时手指
+        // 必然还在屏上，若 Touch 先判会抖成 PERF->FAST 两次切换）：
+        // 前台切换后 2.5s 内 = FAST（启动过渡放开；CT fast 档同语义"最激进"档）
+        if (lastSwitchMs_ && now_ms - lastSwitchMs_ < 2500) {
+            why_ = "app-switch fg=" + st.foregroundPackage;
+            return Scenario::FAST;
+        }
         // Touch 感知（第2步·CT 搬运）：亮屏 + 1.5s 内有触摸边沿 → PERFORMANCE 档。
         // 当前为空包档（参数=基线），本期先通"感知→档位→telemetry→看板"链路；
         // hispeed_freq 等参数待专项实测后放量（Oplus 私有语义，不猜不写）。
@@ -173,15 +182,21 @@ private:
                 t.maxKillPerRound = 0;
                 break;
             case Scenario::PERFORMANCE:
-            case Scenario::FAST:
-                // PERFORMANCE：降频迟滞 80ms（down_rate_limit 0→80000us）——触摸停止后
+                // PERFORMANCE：降频迟滞 80ms（down_rate_limit 0->80000us）——触摸停止后
                 // 频率粘在高位 80ms 不急降，跟手性提升；退出回基线（立即可降）。
                 // 语义 = governor 通用 rate_limit（两次调频动作最小间隔），现值 0、无人认领。
-                // FAST 暂为空包（AmSwitch 第二刀接入时定义）。
                 t.reclaimEnabled = true;
                 t.freezeEnabled = false;
                 t.maxKillPerRound = 0;
-                if (s == Scenario::PERFORMANCE) t.uagDownRateUs = 80000;
+                t.uagDownRateUs = 80000;
+                break;
+            case Scenario::FAST:
+                // FAST（AmSwitch 启动过渡）：降频迟滞 150ms（比 PERF 更粘）——CT fast 档
+                // 同语义"最激进"档；2.5s 窗口后空闲 tick 自动回落。
+                t.reclaimEnabled = true;
+                t.freezeEnabled = false;
+                t.maxKillPerRound = 0;
+                t.uagDownRateUs = 150000;
                 break;
             case Scenario::BALANCE:
             default:
@@ -219,6 +234,7 @@ private:
     uint64_t lastGen_ = 0;
     uint64_t lastPressureMs_ = 0;
     uint64_t lastTouchMs_ = 0;             // 最近触摸边沿时间（Touch→PERFORMANCE，1.5s 滞回）
+    uint64_t lastSwitchMs_ = 0;            // 最近前台切换时间（AmSwitch→FAST，2.5s 过渡窗）
     uint64_t leaseDeadlineMs_ = 0;
     uint64_t hysteresisMs_ = 15000;      // 压力退出滞回 15s（防震荡）
     uint64_t pressureLeaseMs_ = 60000;   // 压力策略租约 60s，过期回落
