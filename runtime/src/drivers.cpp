@@ -240,7 +240,9 @@ void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
         char name[PROP_NAME_MAX] = {0}, val[PROP_VALUE_MAX] = {0};
         __system_property_read(pi, name, val);
         int raw = atoi(val);
-        int st = (raw == 0) ? 0 : 1;
+        // Oplus 实测语义（2026-10-08）：亮屏=2、熄屏=1（原始代码判 raw==0 为灭 → 熄屏值 1 被
+        // 误判为亮，ScreenChanged(off) 永不触发）。按"2=亮，其余=灭"判定。
+        int st = (raw == 2) ? 1 : 0;
         if (st != last) {
             if (last != -2) q.push({EventType::ScreenChanged, now_ms(), 0, "screen-prop", st ? "on" : "off"});
             last = st;

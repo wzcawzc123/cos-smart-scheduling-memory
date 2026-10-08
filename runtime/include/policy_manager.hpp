@@ -98,10 +98,17 @@ public:
 
 private:
     Scenario pick_scenario(const GlobalState& st, const Event& e, uint64_t now_ms) {
-        // GAME 最高优先（§5.5 全量让权）：前台在游戏名单内即让权
-        if (is_game(st.foregroundPackage)) {
+        // GAME 最高优先（§5.5 全量让权）：前台在游戏名单内即让权。
+        // 仅亮屏时成立——熄屏时"在玩游戏"无意义，交由下面的省电分支接管
+        // （挂机游戏进程在前台不会被回收杀掉，freeze 只冻结后台，安全）。
+        if (st.screenOn && is_game(st.foregroundPackage)) {
             why_ = "game fg=" + st.foregroundPackage;
             return Scenario::GAME;
+        }
+        // 熄屏 = 用户不在看 → 自动省电（亮屏日用/熄屏省电 的自动映射核心）
+        if (!st.screenOn) {
+            why_ = "screen off -> powersave";
+            return Scenario::POWERSAVE;
         }
         // 压力事件置位（退出走滞回）
         if (e.type == EventType::MemoryPressureChanged) {

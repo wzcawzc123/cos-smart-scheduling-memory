@@ -53,6 +53,35 @@ static void test_scenario(const std::string& dir) {
     CHECK(d.scenario == Scenario::DAILY, "normal fg -> DAILY");
     CHECK(!d.tactics.handover, "DAILY -> no handover");
 
+    // ---- 熄屏自动省电（场景自动映射：亮屏日用 / 熄屏省电）----
+    {
+        GlobalState st;
+        st.screenOn = false;
+        Event e{};
+        e.type = EventType::ScreenChanged;
+        e.payload = "off";
+        e.ts_ms = 1000;
+
+        auto d = pm.decide(st, e, 1000);
+        CHECK(d.scenario == Scenario::POWERSAVE, "screen off -> POWERSAVE (自动)");
+        CHECK(d.why.find("screen off") != std::string::npos, "why 记录熄屏触发");
+
+        // 熄屏压过 GAME（挂机游戏交由省电接管；进程安全：reclaim 不杀前台）
+        GlobalState st2;
+        st2.screenOn = false;
+        st2.foregroundPackage = "com.tencent.tmgp.sgame";
+        auto d2 = pm.decide(st2, e, 2000);
+        CHECK(d2.scenario == Scenario::POWERSAVE, "screen off + game fg -> POWERSAVE 优先");
+
+        // 亮屏 + 游戏 → GAME 照常（不误伤）
+        GlobalState st3;
+        st3.screenOn = true;
+        st3.foregroundPackage = "com.tencent.tmgp.sgame";
+        auto d3 = pm.decide(st3, e, 3000);
+        CHECK(d3.scenario == Scenario::GAME, "screen on + game -> GAME 照常");
+        std::printf("[screen-auto] ok (熄屏省电/压过GAME/亮屏恢复)\n");
+    }
+
     // POWERSAVE：mode 驱动
     d = pm.decide(st_with("com.tencent.mm", "powersave"),
                   mk(EventType::ModeChanged, "powersave"), 3000);
