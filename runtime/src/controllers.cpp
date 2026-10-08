@@ -417,43 +417,59 @@ public:
             if (auto g = ad.read("/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"))
                 governor_ = *g;   // 本机 uag：仅记录，不干预（§5.2）
         }
-        // ---- uag 参数接管探测（阶段B-CPU）：枚举各簇 up_rate_limit_us 并建基线 ----
+        // ---- uag 参数接管探测（阶段B-CPU + 阶段2）：枚举各簇 up/down 并建基线 ----
         if (r_.state == CtrlState::Active && !stateFile_.empty()) {
             uagNodes_.clear();
             for (int i = 0; i < 10; ++i) {
                 std::string pol = "policy" + std::to_string(i);
-                std::string rel = "/sys/devices/system/cpu/cpufreq/" + pol + "/uag/up_rate_limit_us";
-                if (ad.probe(rel).exists) uagNodes_.push_back({pol, rel});
+                std::string pre = "/sys/devices/system/cpu/cpufreq/" + pol + "/uag/";
+                std::string up = pre + "up_rate_limit_us";
+                if (!ad.probe(up).exists) continue;
+                std::string dn = pre + "down_rate_limit_us";
+                uagNodes_.push_back({pol, up, ad.probe(dn).exists ? dn : ""});
             }
             if (uagNodes_.empty()) {
-                r_.detail += " uag=ABSENT (up_rate_limit_us not found)";
+                r_.detail += " uag=ABSENT";
             } else {
-                // 崩溃残留检查 + 基线档案（DIRTY=1 → 全簇恢复基线）
                 auto st = read_cpu_state(ad);
                 bool dirty = st && st->dirty;
                 std::map<std::string,int> base = st ? st->base : std::map<std::string,int>{};
-                if (base.empty()) {   // 首次/档案缺 → 以现场值建档
+                std::map<std::string,int> baseD = st ? st->baseDown : std::map<std::string,int>{};
+                auto seed = [&]() {
                     for (auto& n : uagNodes_) {
-                        if (auto v = ad.read(n.relPath)) base[n.policy] = atoi(v->c_str());
+                        if (!base.count(n.policy))
+                            if (auto v = ad.read(n.upPath)) base[n.policy] = atoi(v->c_str());
+                        if (!n.downPath.empty() && !baseD.count(n.policy))
+                            if (auto v = ad.read(n.downPath)) baseD[n.policy] = atoi(v->c_str());
                     }
-                    uagBase_ = base;
-                    save_cpu_state(ad, base, false);
-                } else if (dirty) {
+                };
+                bool needSeed = base.empty() || baseD.empty();
+                if (needSeed) seed();   // 补档与恢复是顺序关系，不是互斥（depth 案教训）
+                if (dirty) {
                     std::string rec = "CRASH-RECOVERY uag->";
+                    std::string d;
                     for (auto& n : uagNodes_) {
                         auto it = base.find(n.policy);
-                        if (it == base.end()) continue;
-                        std::string d;
-                        WriteOutcome o = ad.write(n.relPath, std::to_string(it->second), false, &d);
-                        rec += n.policy + ":" + std::to_string(it->second) + " ";
-                        (void)o;
+                        if (it != base.end() &&
+                            ad.write(n.upPath, std::to_string(it->second), false, &d) == WriteOutcome::Ok)
+                            rec += n.policy + ".up=" + std::to_string(it->second) + " ";
+                        if (!n.downPath.empty()) {
+                            auto it2 = baseD.find(n.policy);
+                            if (it2 != baseD.end() &&
+                                ad.write(n.downPath, std::to_string(it2->second), false, &d) == WriteOutcome::Ok)
+                                rec += n.policy + ".dn=" + std::to_string(it2->second) + " ";
+                        }
                     }
-                    uagBase_ = base;
-                    save_cpu_state(ad, base, false);
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.dirty = false;
+                    save_cpu_state(ad, cs);
                     r_.detail += " | " + rec;
-                } else {
-                    uagBase_ = base;
+                } else if (needSeed) {
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.dirty = false;
+                    save_cpu_state(ad, cs);
+                    r_.detail += " uag-seed(up+down)";
                 }
+                uagBase_ = base;
+                downBase_ = baseD;
                 r_.detail += " uagNodes=" + std::to_string(uagNodes_.size());
             }
         }
@@ -486,26 +502,36 @@ public:
                    (detail.empty() ? "" : " (" + detail + ")") +
                    (cpusetOk_ ? "" : " cpuset=SKIP");
 
-        // ---- uag up_rate_limit（阶段B-CPU）：-1 = 回基线，否则写场景值；三簇同步 ----
+        // ---- uag up/down_rate_limit（阶段B-CPU + 阶段2）：-1=回基线，否则写场景值 ----
         if (!uagNodes_.empty() && !uagBase_.empty()) {
             bool offAny = false;
-            for (auto& n : uagNodes_) {
-                int baseV = uagBase_.count(n.policy) ? uagBase_[n.policy] : 0;
-                int target = (eff.cpu.uagUpRateUs >= 0) ? eff.cpu.uagUpRateUs : baseV;
-                std::string dd;
-                bool chg = false;
-                WriteOutcome uo = ad.write(n.relPath, std::to_string(target), dryRun, &dd);
-                if (uo == WriteOutcome::Ok || uo == WriteOutcome::DryRun) {
-                    r.detail += " | uag:" + n.policy + "=" + std::to_string(target) +
-                                "(" + outcome_name(uo) + ")";
-                    if (target != baseV) offAny = true;
-                } else {
-                    r.detail += " | uag:" + n.policy + "=" + outcome_name(uo);
-                    if (uo != WriteOutcome::DryRun) offAny = true;
+            auto runGroup = [&](const char* tag, const std::string UagNode::*fld,
+                                int effVal, const std::map<std::string,int>& baseM) {
+                for (auto& n : uagNodes_) {
+                    const std::string& path = n.*fld;
+                    if (path.empty()) continue;
+                    auto bit = baseM.find(n.policy);
+                    int baseV = bit != baseM.end() ? bit->second : 0;
+                    int target = (effVal >= 0) ? effVal : baseV;
+                    std::string dd;
+                    WriteOutcome uo = ad.write(path, std::to_string(target), dryRun, &dd);
+                    if (uo == WriteOutcome::Ok || uo == WriteOutcome::DryRun) {
+                        r.detail += std::string(" | ") + tag + ":" + n.policy + "=" +
+                                    std::to_string(target) + "(" + outcome_name(uo) + ")";
+                        if (target != baseV) offAny = true;
+                    } else {
+                        r.detail += std::string(" | ") + tag + ":" + n.policy + "=" + outcome_name(uo);
+                        if (uo != WriteOutcome::DryRun) offAny = true;
+                    }
                 }
+            };
+            runGroup("up", &UagNode::upPath, eff.cpu.uagUpRateUs, uagBase_);
+            runGroup("dn", &UagNode::downPath, eff.cpu.uagDownRateUs, downBase_);
+            if (!dryRun) {
+                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_; cs.dirty = offAny;
+                save_cpu_state(ad, cs);
             }
-            if (!dryRun) save_cpu_state(ad, uagBase_, offAny);
-            if (eff.cpu.uagUpRateUs >= 0 || offAny)
+            if (eff.cpu.uagUpRateUs >= 0 || eff.cpu.uagDownRateUs >= 0 || offAny)
                 r.detail += " [cpuState->" + std::string(offAny ? "DIRTY" : "CLEAN") + "]";
         }
 
@@ -525,8 +551,8 @@ public:
     }
 
 private:
-    struct UagNode { std::string policy, relPath; };
-    struct CpuState { std::map<std::string,int> base; bool dirty = false; };
+    struct UagNode { std::string policy, upPath, downPath; };
+    struct CpuState { std::map<std::string,int> base, baseDown; bool dirty = false; };
 
     std::optional<CpuState> read_cpu_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
@@ -541,14 +567,16 @@ private:
             std::string k = line.substr(0, eq), v = line.substr(eq + 1);
             if (k == "DIRTY") s.dirty = (v == "true");
             else if (k.rfind("UP:", 0) == 0) s.base[k.substr(3)] = atoi(v.c_str());
+            else if (k.rfind("DOWN:", 0) == 0) s.baseDown[k.substr(5)] = atoi(v.c_str());
         }
         return s;
     }
-    WriteOutcome save_cpu_state(SysfsAdapter& ad, const std::map<std::string,int>& base, bool dirty) {
+    WriteOutcome save_cpu_state(SysfsAdapter& ad, const CpuState& cs) {
         if (stateFile_.empty()) return WriteOutcome::Missing;
         std::ostringstream os;
-        os << "DIRTY=" << (dirty ? "true" : "false") << "\n";
-        for (auto& kv : base) os << "UP:" << kv.first << "=" << kv.second << "\n";
+        os << "DIRTY=" << (cs.dirty ? "true" : "false") << "\n";
+        for (auto& kv : cs.base) os << "UP:" << kv.first << "=" << kv.second << "\n";
+        for (auto& kv : cs.baseDown) os << "DOWN:" << kv.first << "=" << kv.second << "\n";
         std::string d;
         return ad.write(stateFile_, os.str(), false, &d);   // 档案永远真写
     }
@@ -560,6 +588,7 @@ private:
     int maxHint_ = -1;
     std::vector<UagNode> uagNodes_;
     std::map<std::string,int> uagBase_;
+    std::map<std::string,int> downBase_;
 };
 
 // ========================== GPU / Thermal 占位（M2′）==========================

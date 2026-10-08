@@ -31,9 +31,12 @@ struct CpuPolicy {
     std::string cpusetProfile;     // 空 = 不干预
     bool launchBoost = false;
     // ---- 阶段B-CPU：uag 调速参数（M0 定性"策略层能赢的真实抓手"）----
-    // -1 = 不干预（回基线）。本期只收 up_rate_limit_us（升频延迟）——CT 四档里唯一
-    // 有场景差异的 uag 参数（2500/2000/1000/0）；频率上限不收（Oplus 动态钳制的地盘）。
+    // -1 = 不干预（回基线）。
+    // uagUpRateUs：升频延迟（现值 0=最快）；uagDownRateUs：降频迟滞（现值 0=立即可降）。
+    // PERFORMANCE 档 = down 调大 80ms（触摸停止后频率粘高位 80ms，更跟手；语义为
+    // governor 通用 rate_limit——两次调频动作最小间隔）。频率上限不收（Oplus 地盘）。
     int uagUpRateUs = -1;
+    int uagDownRateUs = -1;
 };
 
 struct GpuPolicy {
@@ -75,6 +78,8 @@ inline EffectivePolicy intersect(const EffectivePolicy& desire,
     e.cpu.launchBoost = desire.cpu.launchBoost && constr.cpu.launchBoost;
     // uag 升频延迟：值越大越限制升频（越保守）→ 约束求交取更限制的一端（max）
     e.cpu.uagUpRateUs = intersect_max(desire.cpu.uagUpRateUs, constr.cpu.uagUpRateUs);
+    // uag 降频迟滞：值越大越限制降频（频率更粘高位）→ 同样取 max
+    e.cpu.uagDownRateUs = intersect_max(desire.cpu.uagDownRateUs, constr.cpu.uagDownRateUs);
     e.gpu.boost = desire.gpu.boost && constr.gpu.boost;
     e.memory.reclaimEnabled = desire.memory.reclaimEnabled || constr.memory.reclaimEnabled;
     e.memory.freezeEnabled  = desire.memory.freezeEnabled  || constr.memory.freezeEnabled;
@@ -93,6 +98,7 @@ inline bool materially_different(const EffectivePolicy& a, const EffectivePolicy
            a.cpu.onlineCores != b.cpu.onlineCores ||
            a.cpu.launchBoost != b.cpu.launchBoost ||
            a.cpu.uagUpRateUs != b.cpu.uagUpRateUs ||
+           a.cpu.uagDownRateUs != b.cpu.uagDownRateUs ||
            a.gpu.maxFreq != b.gpu.maxFreq || a.gpu.minFreq != b.gpu.minFreq ||
            a.gpu.boost != b.gpu.boost ||
            a.memory.reclaimEnabled != b.memory.reclaimEnabled ||

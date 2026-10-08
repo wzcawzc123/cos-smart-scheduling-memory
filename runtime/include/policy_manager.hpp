@@ -26,6 +26,7 @@ struct ScenarioTactics {
     std::string depth;            // 空 = 不干预（交还基线）
     int cooldownSec = -1;         // -1 = 不干预
     int uagUpRateUs = -1;         // -1 = 不干预（回基线）；CPU 侧升频延迟
+    int uagDownRateUs = -1;       // -1 = 不干预（回基线）；CPU 侧降频迟滞（PERFORMANCE 档）
 };
 
 // 策略决策输出
@@ -68,7 +69,8 @@ public:
                      d.tactics.maxFreqKhz == lastTactics_.maxFreqKhz &&
                      d.tactics.depth == lastTactics_.depth &&
                      d.tactics.cooldownSec == lastTactics_.cooldownSec &&
-                     d.tactics.uagUpRateUs == lastTactics_.uagUpRateUs);
+                     d.tactics.uagUpRateUs == lastTactics_.uagUpRateUs &&
+                     d.tactics.uagDownRateUs == lastTactics_.uagDownRateUs);
         d.changed = !same;
         d.generation = same ? lastGen_ : lastGen_ + 1;
         if (d.changed) {
@@ -172,11 +174,14 @@ private:
                 break;
             case Scenario::PERFORMANCE:
             case Scenario::FAST:
-                // v0.11 空包档：参数与 BALANCE 相同（=基线，不干预）。
-                // 输入源（Touch→PERFORMANCE、AmSwitch→FAST）第2步接入时定义真实参数。
+                // PERFORMANCE：降频迟滞 80ms（down_rate_limit 0→80000us）——触摸停止后
+                // 频率粘在高位 80ms 不急降，跟手性提升；退出回基线（立即可降）。
+                // 语义 = governor 通用 rate_limit（两次调频动作最小间隔），现值 0、无人认领。
+                // FAST 暂为空包（AmSwitch 第二刀接入时定义）。
                 t.reclaimEnabled = true;
                 t.freezeEnabled = false;
                 t.maxKillPerRound = 0;
+                if (s == Scenario::PERFORMANCE) t.uagDownRateUs = 80000;
                 break;
             case Scenario::BALANCE:
             default:

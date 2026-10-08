@@ -307,7 +307,7 @@ int main() {
         CHECK(slurp(d2 + "/sys/devices/system/cpu/cpufreq/policy0/uag/up_rate_limit_us").find("2500") == 0,
               "policy0 写 2500");
         CHECK(slurp(st2).find("DIRTY=true") != std::string::npos, "偏离基线 -> DIRTY");
-        CHECK(r1.detail.find("uag:policy3=2500") != std::string::npos, "detail 含各簇写入");
+        CHECK(r1.detail.find("up:policy3=2500") != std::string::npos, "detail 含各簇写入");
 
         // 常态（-1 = 回基线）
         EffectivePolicy daily;

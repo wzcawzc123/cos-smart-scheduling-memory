@@ -235,6 +235,7 @@ int main(int argc, char** argv) {
         base.memory.maxKillPerRound = dec.tactics.maxKillPerRound;
         base.cpu.maxFreq = dec.tactics.cpuClamp ? dec.tactics.maxFreqKhz : -1;
         base.cpu.uagUpRateUs = dec.tactics.uagUpRateUs;   // 阶段B-CPU：uag 升频延迟
+        base.cpu.uagDownRateUs = dec.tactics.uagDownRateUs; // 阶段2：uag 降频迟滞（PERFORMANCE）
         EffectivePolicy eff = reg.resolve(base, dec.generation);
 
         char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};
