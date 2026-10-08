@@ -190,6 +190,7 @@ int main(int argc, char** argv) {
     // ---- M3 PolicyManager：场景判定 + generation + lease ----
     PolicyManager pm;
     pm.set_game_list_path(std::string(logdir) + "/game_apps.txt");
+    pm.set_app_profiles_path(std::string(logdir) + "/app_profiles.txt");  // App 画像（第2步）
 
     std::thread t1(fg_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t5(focus_driver, std::ref(q), p, fg, std::ref(g_run));

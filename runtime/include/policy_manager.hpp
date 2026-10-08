@@ -43,6 +43,57 @@ class PolicyManager {
 public:
     // 游戏名单：每行一个包名（# 注释）。名单不存在 → GAME 场景不可触发（安全降级）。
     void set_game_list_path(std::string p) { gameListPath_ = std::move(p); }
+    // App 画像（第2步·CT 遗产）：每行 "通配符包名|down|up"（-1=跟随档位；# 注释；
+    // 与 game_list 同款生命周期——每次现读、热改热生效）。优先级：画像 > 档位 > 基线。
+    void set_app_profiles_path(std::string p) { profilePath_ = std::move(p); }
+
+    // ---- App 画像引擎 ----
+    static bool glob_match(const char* p, const char* s) {
+        if (!*p) return !*s;
+        if (*p == '*') {
+            for (const char* q = s;; ++q) {
+                if (glob_match(p + 1, q)) return true;
+                if (!*q) return false;
+            }
+        }
+        if (*s && (*p == '?' || *p == *s)) return glob_match(p + 1, s + 1);
+        return false;
+    }
+    static std::string trim_ws(const std::string& t) {
+        auto a = t.find_first_not_of(" \t\r\n");
+        if (a == std::string::npos) return "";
+        auto b = t.find_last_not_of(" \t\r\n");
+        return t.substr(a, b - a + 1);
+    }
+    // 应用画像：匹配前台包名 → 覆盖 uag 参数；GAME（让权）与 POWER_SAVE（熄屏省电）
+    // 不应用——画像不能破解让权与省电这两个安全档（其余档位均可覆盖，CT 同款语义）
+    void apply_profile(Decision& d, const std::string& pkg) const {
+        if (profilePath_.empty() || pkg.empty()) return;
+        if (d.scenario == Scenario::GAME || d.scenario == Scenario::POWER_SAVE) return;
+        std::ifstream f(profilePath_);
+        if (!f.is_open()) return;          // 文件缺失 → 无画像（降级）
+        std::string line;
+        while (std::getline(f, line)) {
+            auto h = line.find('#');
+            if (h != std::string::npos) line = line.substr(0, h);
+            auto bar = line.find('|');
+            if (bar == std::string::npos) continue;
+            std::string pat = trim_ws(line.substr(0, bar));
+            if (pat.empty()) continue;
+            if (!glob_match(pat.c_str(), pkg.c_str())) continue;
+            auto bar2 = line.find('|', bar + 1);
+            std::string dS = trim_ws(line.substr(bar + 1,
+                                     (bar2 == std::string::npos ? line.size() : bar2) - bar - 1));
+            std::string uS = bar2 == std::string::npos ? "" : trim_ws(line.substr(bar2 + 1));
+            bool hit = false;
+            if (!dS.empty()) { int v = atoi(dS.c_str()); if (v >= 0) { d.tactics.uagDownRateUs = v; hit = true; } }
+            if (!uS.empty()) { int v = atoi(uS.c_str()); if (v >= 0) { d.tactics.uagUpRateUs = v; hit = true; } }
+            if (hit) {
+                d.why += " profile=" + pat;
+                break;                      // 首个匹配生效（文件顺序即优先级）
+            }
+        }
+    }
 
     // 主判定：由事件驱动调用（不轮询）。hysteresisMs 用于压力场景退出滞回。
     Decision decide(const GlobalState& st, const Event& e, uint64_t now_ms) {
@@ -61,6 +112,7 @@ public:
         Decision d;
         d.scenario = cand;
         d.tactics = tactics_for(cand, st);
+        apply_profile(d, st.foregroundPackage);   // App 画像：通配符覆盖（画像 > 档位 > 基线）
 
         // --- generation：实质变化才 +1（§4.4 单调，幂等重放不产生新代）---
         bool same = (cand == lastScenario_ &&
@@ -84,7 +136,7 @@ public:
         // --- 租约：压力场景与 LaunchBoost 类策略带 TTL，过期自动回落（§4.4）---
         if (cand == Scenario::MEMORY_PRESSURE)
             d.leaseUntilMs = now_ms + pressureLeaseMs_;
-        d.why = why_;
+        d.why = why_ + d.why;   // d.why 此时仅含 apply_profile 追加的 " profile=..."（画像审计）
         return d;
     }
 
@@ -228,6 +280,7 @@ private:
     }
 
     std::string gameListPath_;
+    std::string profilePath_;              // App 画像文件（空 = 无画像）
     std::string why_;
     Scenario lastScenario_ = Scenario::BOOT;
     ScenarioTactics lastTactics_{};

@@ -87,6 +87,58 @@ static void test_scenario(const std::string& dir) {
         std::printf("[screen-auto] ok (熄屏省电/压过GAME/亮屏恢复)\n");
     }
 
+    // ---- App 画像（第2步·CT 遗产）：通配符覆盖 > 档位；GAME/POWER_SAVE 不应用 ----
+    {
+        PolicyManager pp;
+        std::string pf = dir + "/app_profiles.txt";
+        { std::ofstream f(pf);
+          f << "# pattern|down|up  (-1=跟随档位)\n"
+               "com.tencent.mm*|200000|-1\n"      // 微信系：down 强制 200ms
+               "org.example.?pp|300000|500\n"      // ? 单字符匹配
+               "*.speedtest*|250000|5000\n"; }     // 段通配
+        pp.set_app_profiles_path(pf);
+
+        GlobalState st; st.screenOn = true;
+        Event td{}; td.type = EventType::TouchChanged; td.payload = "down";
+
+        // 画像 > 档位：PERFORMANCE 档 down=80000 被画像 200000 覆盖
+        st.foregroundPackage = "com.tencent.mm";
+        auto a = pp.decide(st, td, 10000);
+        CHECK(a.scenario == Scenario::PERFORMANCE, "touch in mm -> PERFORMANCE");
+        CHECK(a.tactics.uagDownRateUs == 200000, "profile overrides level (200000)");
+        CHECK(a.why.find("profile=") != std::string::npos, "why 记录画像命中");
+        CHECK(a.tactics.uagUpRateUs == -1, "profile -1 -> 跟随档位");
+
+        // 通配语义：? 与 * 段匹配
+        st.foregroundPackage = "org.example.zpp";
+        auto b = pp.decide(st, td, 13000);
+        CHECK(b.tactics.uagDownRateUs == 300000, "? wildcard match (300000)");
+        st.foregroundPackage = "com.nperf.speedtest";
+        auto c = pp.decide(st, td, 16000);
+        CHECK(c.tactics.uagDownRateUs == 250000, "* wildcard match (250000)");
+
+        // 无匹配 → 档位值（80000）
+        st.foregroundPackage = "com.other.app";
+        auto d = pp.decide(st, td, 19000);
+        CHECK(d.tactics.uagDownRateUs == 80000, "no profile -> level value 80000");
+        CHECK(d.why.find("profile=") == std::string::npos, "no profile tag in why");
+
+        // POWER_SAVE 不应用画像（安全档不被破解）
+        st.screenOn = false;
+        st.foregroundPackage = "com.tencent.mm";
+        auto e = pp.decide(st, td, 22000);
+        CHECK(e.scenario == Scenario::POWER_SAVE, "screen off -> POWER_SAVE");
+        CHECK(e.tactics.uagDownRateUs < 0, "POWER_SAVE 画像不应用");
+
+        // 文件缺失降级
+        PolicyManager pn;
+        pn.set_app_profiles_path(dir + "/no_such_profiles.txt");
+        st.screenOn = true;
+        auto f = pn.decide(st, td, 1000);
+        CHECK(f.tactics.uagDownRateUs == 80000, "missing file -> level only");
+        std::printf("[profile] ok (覆盖/通配/降级/安全档)\n");
+    }
+
     // ---- Touch 感知（第2步）：down→PERFORMANCE、1.5s 滞回回落、GAME/熄屏优先 ----
     {
         PolicyManager pt;
