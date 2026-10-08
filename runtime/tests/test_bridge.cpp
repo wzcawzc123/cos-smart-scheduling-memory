@@ -440,6 +440,18 @@ int main() {
         CHECK(tot == 12345 && jk == 678, "gfxinfo 数值正确");
         CHECK(!parse_gfxinfo("no frames here", tot, jk), "缺行返回 false");
 
+        // 电量（M5 分母）
+        std::string bd = dir + "_ps";
+        system(("mkdir -p " + bd + "/battery").c_str());
+        { std::ofstream f(bd + "/battery/capacity"); f << "49"; }
+        { std::ofstream f(bd + "/battery/status"); f << "Discharging"; }
+        { std::ofstream f(bd + "/battery/current_now"); f << "531"; }
+        auto bj = battery_json(bd);
+        CHECK(bj.find("\"pct\":49") != std::string::npos, "电量49%");
+        CHECK(bj.find("Discharging") != std::string::npos, "放电状态");
+        CHECK(bj.find("\"mA\":531") != std::string::npos, "电流读数");
+        CHECK(battery_json(bd + "_missing").find("\"pct\":-1") != std::string::npos,
+              "缺失降级 pct=-1");
         std::printf("[evidence] ok (温度top3/battery/gfxinfo解析)\n");
     }
 

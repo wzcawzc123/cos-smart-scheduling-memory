@@ -44,6 +44,22 @@ std::string thermal_json(const std::string& thermalRoot) {
     return o.str();
 }
 
+// 电量（M5 分母）：capacity% + 充放电状态 + current_now(mA，作瞬时参考，抖动大不作主指标)
+std::string battery_json(const std::string& psRoot) {
+    std::ifstream fc(psRoot + "/battery/capacity");
+    if (!fc.is_open()) return "\"pct\":-1";   // 降级：字段保留但 -1
+    long pct = -1, ma = -1;
+    std::string st = "Unknown";
+    fc >> pct;
+    std::ifstream fs(psRoot + "/battery/status");
+    if (fs.is_open()) fs >> st;
+    std::ifstream fi(psRoot + "/battery/current_now");
+    if (fi.is_open()) fi >> ma;
+    std::ostringstream o;
+    o << "\"pct\":" << pct << ",\"chg\":\"" << st << "\",\"mA\":" << ma;
+    return o.str();
+}
+
 // dumpsys gfxinfo 输出解析：Total/Janky 两行
 bool parse_gfxinfo(const std::string& text, long& total, long& janky) {
     auto a = text.find("Total frames rendered:");

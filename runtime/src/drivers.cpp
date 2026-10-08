@@ -366,8 +366,9 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool
     while (run) {
         {
             std::string tj = thermal_json("/sys/class/thermal");
+            std::string bj = battery_json("/sys/class/power_supply");   // M5 电量分母
             std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
-            lf << "{\"ts\":" << now_ms() << "," << tj << "}\n";
+            lf << "{\"ts\":" << now_ms() << "," << tj << "," << bj << "}\n";
         }
         {
             std::string pkg = fg->get();
