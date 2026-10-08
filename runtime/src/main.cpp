@@ -11,6 +11,7 @@
 #include <sstream>
 #include <ctime>
 #include <cstdio>
+#include <unistd.h>
 #include <sys/stat.h>
 
 using namespace uro;
@@ -42,8 +43,97 @@ private:
     std::string path_; std::ofstream f_;
 };
 
+// ==================== Telemetry（阶段C：结构化证据链）====================
+// §5.6 / P0-07：我方主动动作必须带 action_id 且可审计；低频写入（§4.5 Telemetry）。
+// 轮转：超过 kTelMax 压成 .1（保留一份），避免无界增长。
+static constexpr size_t kTelMax = 1u << 20;   // 1MB
+static std::string json_esc(const std::string& s) {
+    std::string o;
+    for (char c : s) {
+        if (c == '"' || c == '\\') { o += '\\'; o += c; }
+        else if (c == '\n') o += "\\n";
+        else if ((unsigned char)c >= 0x20) o += c;
+    }
+    return o;
+}
+static void tel_append(const std::string& path, const std::string& line) {
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (in && (size_t)in.tellg() > kTelMax) {
+        in.close();
+        std::remove((path + ".1").c_str());
+        std::rename(path.c_str(), (path + ".1").c_str());
+    }
+    std::ofstream out(path, std::ios::app);
+    if (out) out << line << "\n";
+}
+
+// ==================== Death Attribution（阶段C：§5.6）====================
+// 证据不足必须输出 UNKNOWN——绝不伪造（APP_SELF_EXIT 只在证据足够时才可标）。
+// v1 证据源：① COSMemory guard.telemetry（RECLAIM/FREEZE/KILL，100% 对应要求）
+//            ② logcat（LMKD / AMS Killing / crash；时间窗口靠 logcat 自身缓冲）
+struct AttrResult { std::string cause, evidence; };
+static AttrResult attribute_pid(SysfsAdapter& ad, int pid, const std::string& pkg) {
+    AttrResult r{"UNKNOWN", ""};
+    // ---- 证据源①：guard.telemetry 格式 epoch|pid|pkg||ACTION|detail ----
+    std::string telPath = "/data/system/cosmem/guard.telemetry";
+    if (auto txt = ad.read_all(telPath)) {
+        std::istringstream is(*txt);
+        std::string ln;
+        while (std::getline(is, ln)) {
+            auto p1 = ln.find('|');
+            if (p1 == std::string::npos) continue;
+            auto p2 = ln.find('|', p1 + 1);
+            if (p2 == std::string::npos) continue;
+            if (atoi(ln.substr(p1 + 1, p2 - p1 - 1).c_str()) != pid) continue;
+            if (!pkg.empty() && ln.find(pkg) == std::string::npos) continue;
+            r.cause = "COSMemory_RECLAIM";
+            r.evidence = "guard.telemetry: " + ln;
+            return r;
+        }
+    }
+    // ---- 证据源②：logcat（按语义细化，命中 pid 但语义不明则不归因）----
+    auto scan = [&](const char* tag) -> bool {
+        std::string cmd = std::string("logcat -d -b ") + tag +
+                          " -t 500 2>/dev/null | grep -F '" + std::to_string(pid) + "'";
+        FILE* f = popen(cmd.c_str(), "r");
+        if (!f) return false;
+        char buf[512]; std::string hit;
+        while (fgets(buf, sizeof buf, f)) hit += buf;
+        pclose(f);
+        if (hit.empty()) return false;
+        if (!pkg.empty() && hit.find(pkg) == std::string::npos) return false;
+        if (hit.find("lowmemorykiller") != std::string::npos ||
+            hit.find("lmkd") != std::string::npos)        r.cause = "SYSTEM_LMKD";
+        else if (hit.find("Killing") != std::string::npos ||
+                 hit.find("am_kill") != std::string::npos) r.cause = "AMS_KILL";
+        else if (hit.find("FATAL") != std::string::npos ||
+                 hit.find("tombstone") != std::string::npos ||
+                 hit.find("ANR in") != std::string::npos)  r.cause = "CRASH";
+        else return false;
+        auto pos = hit.find('\n');
+        r.evidence = "logcat[" + std::string(tag) + "]: " +
+                     hit.substr(0, pos == std::string::npos ? hit.size() : pos);
+        return true;
+    };
+    if (scan("main") || scan("system") || scan("crash")) return r;
+    r.evidence = "no corroboration in guard.telemetry/logcat";
+    return r;   // UNKNOWN（§5.6：无法确认时不得伪造）
+}
+
 int main(int argc, char** argv) {
-    const char* logdir = (argc > 1) ? argv[1] : "/sdcard/Android/UnifiedRootOptimizer/log";
+    const char* logdir = (argc > 1 && strcmp(argv[1], "--attribute") != 0)
+                             ? argv[1] : "/sdcard/Android/UnifiedRootOptimizer/log";
+    // ---- 阶段C：--attribute <pid> [pkg]：Death Attribution 查询（不进主循环）----
+    // 输出 JSON；exit 0=归因成功，2=证据不足(UNKNOWN)（§5.6：不伪造）
+    if (argc > 2 && strcmp(argv[1], "--attribute") == 0) {
+        int pid = atoi(argv[2]);
+        std::string pkg = argc > 3 ? argv[3] : "";
+        SysfsAdapter ad;
+        AttrResult r = attribute_pid(ad, pid, pkg);
+        std::printf("{\"pid\":%d,\"cause\":\"%s\",\"evidence\":\"%s\"}\n",
+                    pid, r.cause.c_str(), json_esc(r.evidence).c_str());
+        return r.cause == "UNKNOWN" ? 2 : 0;
+    }
     // enforce 放量：启动参数（CI/调试用）OR 开关文件（面板写入，用户可自主选择）。
     // 开关文件在每个策略边界热读 → 面板切换后无需重启即生效（§4.4 配置热重载）。
     const char* kUroConf = "/sdcard/Android/UnifiedRootOptimizer/uro.conf";
@@ -175,6 +265,34 @@ int main(int argc, char** argv) {
         ad.clear_traces();
         appliedOnce = true;
         lastApplied = eff;
+
+        // ---- 阶段C：结构化 telemetry（幂等门槛之上 = 低频；P0-07 action_id 审计）----
+        {
+            static int telSeq = 0;
+            ++telSeq;
+            std::ostringstream jt;
+            jt << "{\"ts\":" << now / 1000
+               << ",\"action_id\":\"t" << now / 1000 << "-" << telSeq << "-" << getpid() << "\""
+               << ",\"gen\":" << eff.generation
+               << ",\"scenario\":\"" << scenario_name(dec.scenario) << "\""
+               << ",\"why\":\"" << json_esc(dec.why) << "\""
+               << ",\"enforce\":" << (en ? 1 : 0)
+               << ",\"dryRun\":" << (en ? 0 : 1)
+               << ",\"handover\":" << (dec.tactics.handover ? 1 : 0)
+               << ",\"fg\":\"" << json_esc(st.foregroundPackage) << "\""
+               << ",\"memAvailMb\":" << st.memAvailMb
+               << ",\"psiMem10\":" << st.psiMem10
+               << ",\"reclaim\":" << (eff.memory.reclaimEnabled ? 1 : 0)
+               << ",\"maxKill\":" << eff.memory.maxKillPerRound
+               << ",\"uagUpRate\":" << eff.cpu.uagUpRateUs
+               << ",\"ctrl\":[";
+            for (size_t i = 0; i < reps.size() && i < reg.size(); ++i) {
+                if (i) jt << ",";
+                jt << "{\"" << reg.at(i).name() << "\":\"" << ctrl_state_name(reps[i].state) << "\"}";
+            }
+            jt << "]}";
+            tel_append(std::string(logdir) + "/telemetry.jsonl", jt.str());
+        }
     };
 
     while (g_run) {
