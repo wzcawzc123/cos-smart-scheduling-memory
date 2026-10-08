@@ -193,7 +193,9 @@ int main(int argc, char** argv) {
 
     std::thread t1(fg_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t5(focus_driver, std::ref(q), p, fg, std::ref(g_run));
-    std::thread t2(mode_config_driver, std::ref(q), p, std::ref(g_run));
+    // v0.11 四档自治：mode_config_driver 停用——不再读系统 mode.txt（省电/高性能设置
+    // 与 URO 解耦；用户不使用系统模式，判档全走自身感知：熄屏/前台/压力）。
+    // std::thread t2(mode_config_driver, std::ref(q), p, std::ref(g_run));
     std::thread t3(sampler_driver, std::ref(q), p, std::ref(g_run));
     std::thread t4(screen_driver, std::ref(q), nullptr, std::ref(g_run));
 
@@ -327,7 +329,7 @@ int main(int argc, char** argv) {
     }
 
     g_run = false; q.stop();
-    t1.join(); t5.join(); t2.join(); t3.join(); t4.join();
+    t1.join(); t5.join(); t3.join(); t4.join();   // t2(mode driver) 已于 v0.11 停用
     fprintf(stderr, "[URO-M2′] stopped. final gen=%llu fg=%s mode=%s\n",
             (unsigned long long)st.generation, st.foregroundPackage.c_str(), st.mode.c_str());
     for (size_t i = 0; i < reg.size(); ++i)

@@ -50,7 +50,7 @@ static void test_scenario(const std::string& dir) {
     // DAILY：普通 App
     d = pm.decide(st_with("com.tencent.mm", "balance"),
                   mk(EventType::ForegroundChanged, "com.tencent.mm"), 2000);
-    CHECK(d.scenario == Scenario::DAILY, "normal fg -> DAILY");
+    CHECK(d.scenario == Scenario::BALANCE, "normal fg -> DAILY");
     CHECK(!d.tactics.handover, "DAILY -> no handover");
 
     // ---- 熄屏自动省电（场景自动映射：亮屏日用 / 熄屏省电）----
@@ -63,7 +63,7 @@ static void test_scenario(const std::string& dir) {
         e.ts_ms = 1000;
 
         auto d = pm.decide(st, e, 1000);
-        CHECK(d.scenario == Scenario::POWERSAVE, "screen off -> POWERSAVE (自动)");
+        CHECK(d.scenario == Scenario::POWER_SAVE, "screen off -> POWERSAVE (自动)");
         CHECK(d.why.find("screen off") != std::string::npos, "why 记录熄屏触发");
 
         // 熄屏压过 GAME（挂机游戏交由省电接管；进程安全：reclaim 不杀前台）
@@ -71,7 +71,7 @@ static void test_scenario(const std::string& dir) {
         st2.screenOn = false;
         st2.foregroundPackage = "com.tencent.tmgp.sgame";
         auto d2 = pm.decide(st2, e, 2000);
-        CHECK(d2.scenario == Scenario::POWERSAVE, "screen off + game fg -> POWERSAVE 优先");
+        CHECK(d2.scenario == Scenario::POWER_SAVE, "screen off + game fg -> POWERSAVE 优先");
 
         // 亮屏 + 游戏 → GAME 照常（不误伤）
         GlobalState st3;
@@ -82,12 +82,10 @@ static void test_scenario(const std::string& dir) {
         std::printf("[screen-auto] ok (熄屏省电/压过GAME/亮屏恢复)\n");
     }
 
-    // POWERSAVE：mode 驱动
+    // v0.11 四档自治：系统 mode.txt 不再影响档位（用户不依赖系统省电/高性能设置）
     d = pm.decide(st_with("com.tencent.mm", "powersave"),
                   mk(EventType::ModeChanged, "powersave"), 3000);
-    CHECK(d.scenario == Scenario::POWERSAVE, "mode=powersave -> POWERSAVE");
-    CHECK(d.tactics.freezeEnabled, "POWERSAVE -> freeze on");
-    CHECK(d.tactics.maxKillPerRound == 3, "POWERSAVE maxKill=3");
+    CHECK(d.scenario == Scenario::BALANCE, "system mode IGNORED (v0.11 四档自治)");
 
     // MEMORY_PRESSURE：压力事件
     d = pm.decide(st_with("com.tencent.mm", "balance"),
@@ -129,10 +127,10 @@ static void test_generation() {
     CHECK(!d2.changed && d2.generation == g1, "identical re-decide -> no new generation");
     CHECK(!d3.changed, "3rd identical re-decide -> still unchanged");
 
-    // 切 powersave → generation +1
-    st.mode = "powersave";
-    Decision d4 = pm.decide(st, mk(EventType::ModeChanged, "powersave"), 2000);
-    CHECK(d4.changed, "mode change -> changed");
+    // 熄屏进省电档 → generation +1（v0.11：档位切换驱动代数，系统 mode 已解耦）
+    st.screenOn = false;
+    Decision d4 = pm.decide(st, mk(EventType::ScreenChanged, "off"), 2000);
+    CHECK(d4.changed, "screen off -> POWER_SAVE -> changed");
     CHECK(d4.generation == g1 + 1, "generation +1 exactly once");
     CHECK(d4.generation > g1, "generation monotonic");
 
@@ -163,7 +161,7 @@ static void test_no_oscillation() {
     // 超过滞回窗口后才回落
     Decision later = pm.decide(st, mk(EventType::ForegroundChanged, "com.tencent.mm"),
                                now + 1000 + 16000);
-    CHECK(later.scenario == Scenario::DAILY, "after hysteresis -> falls back to DAILY");
+    CHECK(later.scenario == Scenario::BALANCE, "after hysteresis -> falls back to DAILY");
     CHECK(later.changed, "fallback produces one generation bump");
 
     std::printf("[no-oscillation] ok\n");
@@ -184,7 +182,7 @@ static void test_lease() {
     pm.set_pressure_time(0);
     Decision back = pm.decide(st, mk(EventType::ForegroundChanged, "com.tencent.mm"),
                               100000 + 61000);
-    CHECK(back.scenario == Scenario::DAILY, "expired lease -> fallback scenario");
+    CHECK(back.scenario == Scenario::BALANCE, "expired lease -> fallback scenario");
 
     std::printf("[lease] ok\n");
 }

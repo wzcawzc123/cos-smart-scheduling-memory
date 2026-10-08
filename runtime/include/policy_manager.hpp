@@ -30,7 +30,7 @@ struct ScenarioTactics {
 
 // 策略决策输出
 struct Decision {
-    Scenario scenario = Scenario::DAILY;
+    Scenario scenario = Scenario::BALANCE;
     ScenarioTactics tactics;
     uint64_t generation = 0;
     bool changed = false;         // 相对上次决策实质变化（驱动 apply 边界）
@@ -50,7 +50,7 @@ public:
         // --- 滞回（防震荡）：压力场景退出需要持续无压力达 hysteresisMs ---
         if (cand == Scenario::MEMORY_PRESSURE && lastPressureMs_ &&
             now_ms - lastPressureMs_ > hysteresisMs_) {
-            cand = (st.mode == "powersave") ? Scenario::POWERSAVE : Scenario::DAILY;
+            cand = st.screenOn ? Scenario::BALANCE : Scenario::POWER_SAVE;
         }
 
         Decision d;
@@ -105,10 +105,10 @@ private:
             why_ = "game fg=" + st.foregroundPackage;
             return Scenario::GAME;
         }
-        // 熄屏 = 用户不在看 → 自动省电（亮屏日用/熄屏省电 的自动映射核心）
+        // 熄屏 = 用户不在看 → 自动省电档（亮屏日用/熄屏省电 的自动映射核心）
         if (!st.screenOn) {
             why_ = "screen off -> powersave";
-            return Scenario::POWERSAVE;
+            return Scenario::POWER_SAVE;
         }
         // 压力事件置位（退出走滞回）
         if (e.type == EventType::MemoryPressureChanged) {
@@ -120,13 +120,12 @@ private:
             why_ = "pressure hold (hysteresis)";
             return Scenario::MEMORY_PRESSURE;
         }
-        if (st.mode == "powersave") { why_ = "mode=powersave"; return Scenario::POWERSAVE; }
-        if (st.mode == "performance" || st.mode == "game") { why_ = "mode=" + st.mode; return Scenario::DAILY; }
         if (st.generation <= 1 && e.source.find("boot") != std::string::npos) {
             why_ = "bootstrap"; return Scenario::BOOT;
         }
-        why_ = "mode=" + st.mode + " fg=" + st.foregroundPackage;
-        return Scenario::DAILY;
+        // v0.11 四档自治：不再读系统 mode.txt（用户从不手动切系统省电/高性能，判档全走自身感知）
+        why_ = "fg=" + st.foregroundPackage;
+        return Scenario::BALANCE;
     }
 
     ScenarioTactics tactics_for(Scenario s, const GlobalState& st) {
@@ -148,7 +147,7 @@ private:
                 t.cooldownSec = 30;         // 缩短冷却：压力期允许更频繁重触发
                 t.cpuClamp = false;         // §3.3 允许降级但 M3 不主动 clamp
                 break;
-            case Scenario::POWERSAVE:
+            case Scenario::POWER_SAVE:
                 t.reclaimEnabled = true;
                 t.freezeEnabled = true;
                 t.maxKillPerRound = 3;
@@ -160,7 +159,15 @@ private:
                 t.freezeEnabled = false;
                 t.maxKillPerRound = 0;
                 break;
-            case Scenario::DAILY:
+            case Scenario::PERFORMANCE:
+            case Scenario::FAST:
+                // v0.11 空包档：参数与 BALANCE 相同（=基线，不干预）。
+                // 输入源（Touch→PERFORMANCE、AmSwitch→FAST）第2步接入时定义真实参数。
+                t.reclaimEnabled = true;
+                t.freezeEnabled = false;
+                t.maxKillPerRound = 0;
+                break;
+            case Scenario::BALANCE:
             default:
                 t.reclaimEnabled = true;
                 t.freezeEnabled = false;
