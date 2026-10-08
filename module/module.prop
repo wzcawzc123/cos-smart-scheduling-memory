@@ -1,6 +1,6 @@
 id=uro
 name=UnifiedRootOptimizer
-version=v0.15.0
-versionCode=1500
+version=v0.16.0
+versionCode=1600
 author=是你吗薰儿
-description=四档自治调度+智能感知+App画像+两阶段事务恢复+屏幕自适应巡检+ WebUI 看板
+description=四档自治+智能感知+App画像+2PC事务+屏幕自适应+ThreadController(AppOpt路线a)+COSMemory联装+ WebUI看板

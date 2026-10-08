@@ -2,6 +2,7 @@
 // 验证：场景 → reclaim.aggressive 映射 + 基线恢复（防互相覆盖）+ 幂等 + dry-run 不落盘
 // 构建: g++ -std=c++20 -Iinclude src/adapter.cpp src/controllers.cpp tests/test_bridge.cpp -o /tmp/b && /tmp/b
 #include "../include/controller.hpp"
+#include "../include/drivers.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -359,6 +360,57 @@ int main() {
         CHECK(slurp(d2 + "/bridge.state").find("PHASE=COMMIT") != std::string::npos,
               "正常写后标记 COMMIT");
         std::printf("[2pc] ok (PREPARE崩溃恢复/COMMIT标记)\n");
+    }
+
+    // ---- 15. [appopt] ThreadController Phase-1 纯逻辑（host 可测）----
+    {
+        std::string d = dir + "_aopt";
+        system(("mkdir -p " + d + "/cpuset/0-2 " + d + "/cpuset/7").c_str());
+        { std::ofstream f(d + "/applist.conf");
+          f << "# 注释行\n// 斜杠注释\n"
+               "com.tencent.mm=e-core {\n"
+               "\tRenderThread=hp-core\n"
+               "}\n"
+               "// com.tencent.tmgp.sgame {\n"
+               "#com.tencent.tmgp.sgame=hp-core\n"; }
+        { std::ofstream f(d + "/game.txt");
+          f << "com.tencent.tmgp.sgame\n# 注释\ncom.oplus.games\n"; }
+        { std::ofstream f(d + "/cpuset/0-2/tasks"); f << "1\n2\n3\n"; }
+        { std::ofstream f(d + "/cpuset/7/tasks"); f << "9\n"; }
+
+        auto s1 = read_appopt(d + "/applist.conf", d + "/game.txt", d + "/cpuset");
+        CHECK(s1.present, "appopt present");
+        CHECK(s1.rules == 3, "活跃规则计数=3(块两行+闭括号;注释不计)");
+        CHECK(s1.gameViolation.empty(), "游戏规则全注释 -> 无违规");
+        CHECK(s1.groups.size() == 2, "cpuset 组数=2");
+        int n7 = -1;
+        for (auto& g : s1.groups) if (g.first == "7") n7 = g.second;
+        CHECK(n7 == 1, "组7成员数=1");
+
+        // 违规用例：放开 sgame 活跃行 -> gameViolation 命中（10-07 应豁免）
+        { std::ofstream f(d + "/applist.conf", std::ios::app);
+          f << "com.tencent.tmgp.sgame=hp-core\n"; }
+        auto s2 = read_appopt(d + "/applist.conf", d + "/game.txt", d + "/cpuset");
+        CHECK(s2.rules == 4, "放开后规则=4");
+        CHECK(s2.gameViolation == "com.tencent.tmgp.sgame", "游戏豁免校验命中");
+
+        // URO-GEN 框架：追加+备份+幂等
+        ensure_uro_gen_block(d + "/applist.conf");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          CHECK(ss.str().find("URO-GEN-BEGIN") != std::string::npos, "GEN 框架已建"); }
+        { std::ifstream f(d + "/applist.conf.bak_uro_gen");
+          CHECK(f.is_open(), "GEN 前已备份"); }
+        ensure_uro_gen_block(d + "/applist.conf");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          auto c = ss.str();
+          size_t pos = 0, cnt = 0;
+          while ((pos = c.find("URO-GEN-BEGIN", pos)) != std::string::npos) { cnt++; pos += 13; }
+          CHECK(cnt == 1, "GEN 框架幂等(重复调用不叠加)"); }
+
+        // 缺失降级
+        auto s3 = read_appopt(d + "/nope.conf", d + "/nope.txt", d + "/no_cpuset");
+        CHECK(!s3.present, "全缺失 -> absent");
+        std::printf("[appopt] ok (计数/豁免校验/GEN框架/降级)\n");
     }
 
     test_no_override(dir);

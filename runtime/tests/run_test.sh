@@ -18,7 +18,7 @@ run_one() {
     name="$1"
     if [ "$TARGET" != "all" ] && [ "$TARGET" != "$name" ]; then return 0; fi
     echo "== test_$name =="
-    if ! g++ -std=c++20 -Wall -Iinclude src/adapter.cpp src/controllers.cpp \
+    if ! g++ -std=c++20 -Wall -Iinclude src/adapter.cpp src/controllers.cpp src/appopt.cpp \
             "tests/test_$name.cpp" -o "$OUT.$name" 2>"$OUT.$name.cc.err"; then
         echo "   COMPILE FAIL:"
         grep -m5 error "$OUT.$name.cc.err" | sed 's/^/   /'

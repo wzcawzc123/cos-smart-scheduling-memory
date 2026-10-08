@@ -200,6 +200,10 @@ int main(int argc, char** argv) {
     std::thread t3(sampler_driver, std::ref(q), p, std::ref(g_run));
     std::thread t4(screen_driver, std::ref(q), nullptr, std::ref(g_run));
     std::thread t6(touch_driver, std::ref(q), std::ref(g_run));   // 第2步：触摸边沿
+    std::thread t7(thread_evidence_driver, std::string(logdir),
+                   "/data/adb/modules/AppOpt/applist.conf",
+                   std::string(logdir) + "/game_apps.txt",
+                   "/dev/cpuset/AppOpt", std::ref(g_run));   // Phase-1: Thread Evidence
 
     Event e;
     EffectivePolicy lastApplied;
@@ -362,7 +366,7 @@ int main(int argc, char** argv) {
     }
 
     g_run = false; q.stop();
-    t1.join(); t5.join(); t3.join(); t4.join(); t6.join();   // t2(mode driver) 已于 v0.11 停用
+    t1.join(); t5.join(); t3.join(); t4.join(); t6.join(); t7.join();   // t2(mode driver) 已于 v0.11 停用
     fprintf(stderr, "[URO-M2′] stopped. final gen=%llu fg=%s mode=%s\n",
             (unsigned long long)st.generation, st.foregroundPackage.c_str(), st.mode.c_str());
     for (size_t i = 0; i < reg.size(); ++i)

@@ -7,6 +7,8 @@
 #include <mutex>
 #include <string>
 #include <memory>
+#include <vector>
+#include <utility>
 
 namespace uro {
 
@@ -51,6 +53,21 @@ void sampler_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run);
 void screen_driver(EventQueue& q, EventQueue* /*reserved*/, std::atomic<bool>& run);
 // 第2步·智能感知：触摸屏 BTN_TOUCH 边沿（down/up → TouchChanged；边沿即节流）
 void touch_driver(EventQueue& q, std::atomic<bool>& run);
+
+// ThreadController Phase-1（AppOpt 路线 a：约束源+Evidence+豁免校验+URO-GEN框架）
+struct AppOptSummary {
+    bool present = false;                    // conf 与 cpuset 至少其一在
+    int rules = 0;                           // 活跃规则行数
+    std::vector<std::pair<std::string,int>> groups;  // cpuset 组 -> 成员数
+    std::string gameViolation;               // 非空 = 游戏包被活跃规则覆盖（告警）
+};
+
+AppOptSummary read_appopt(const std::string& confPath, const std::string& gamePath,
+                          const std::string& cpusetRoot);
+void ensure_uro_gen_block(const std::string& confPath);
+void thread_evidence_driver(const std::string& logdir, const std::string& appoptConf,
+                            const std::string& gamePath, const std::string& cpusetRoot,
+                            std::atomic<bool>& run);
 
 uint64_t now_ms();
 

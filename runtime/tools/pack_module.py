@@ -23,7 +23,14 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(MOD / "module.prop", "module.prop")
     z.write(MOD / "service.sh", "service.sh")
     z.write(MOD / "uninstall.sh", "uninstall.sh")
+    z.write(MOD / "customize.sh", "customize.sh")   # COSMemory 联动（架构定案 1+2 的"1"）
     z.write(MOD / "webroot" / "index.html", "webroot/index.html")   # 调度看板（KSU WebUI）
+    # COSMemory 内嵌包（联动装；缺失仅降级提示不阻断）
+    cm = pathlib.Path("/workspace/COSMemory_v1.1.5.zip")
+    if cm.exists():
+        z.write(cm, "cosmemory/COSMemory_v1.1.5.zip")
+    else:
+        print("WARN: 内嵌 COSMemory 包缺失 -> 联动降级")
     z.write(BIN, "bin/URORuntime")
     # 可执行权限位（KSU 解压后按此还原）
     for n in ("service.sh", "uninstall.sh", "bin/URORuntime"):

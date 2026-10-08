@@ -1,6 +1,7 @@
 // UnifiedRootOptimizer M1 — driver 实现 v2 (resolver: ResumedActivity 同源语义)
 #include "drivers.hpp"
 #include <sys/inotify.h>
+#include <dirent.h>
 #include <sys/system_properties.h>
 #include <linux/input.h>
 #include <poll.h>
@@ -328,4 +329,33 @@ void touch_driver(EventQueue& q, std::atomic<bool>& run) {
     close(fd);
 }
 
+// 驱动：60s 低频 Evidence 轮询（不推事件；告警走 thread.jsonl 字段 + stderr WARN）
+void thread_evidence_driver(const std::string& logdir, const std::string& appoptConf,
+                            const std::string& gamePath, const std::string& cpusetRoot,
+                            std::atomic<bool>& run) {
+    bool genChecked = false;
+    while (run) {
+        AppOptSummary s = read_appopt(appoptConf, gamePath, cpusetRoot);
+        if (s.present) {
+            if (!genChecked) { ensure_uro_gen_block(appoptConf); genChecked = true; }
+            std::ostringstream o;
+            o << "{\"ts\":" << now_ms() << ",\"present\":true,\"rules\":" << s.rules << ",\"groups\":{";
+            for (size_t i = 0; i < s.groups.size(); ++i) {
+                if (i) o << ",";
+                o << "\"" << s.groups[i].first << "\":" << s.groups[i].second;
+            }
+            o << "}";
+            if (!s.gameViolation.empty()) o << ",\"gameViolation\":\"" << s.gameViolation << "\"";
+            o << "}\n";
+            std::ofstream lf(logdir + "/thread.jsonl", std::ios::app);
+            lf << o.str();
+            if (!s.gameViolation.empty())
+                fprintf(stderr, "[URO-thread] WARN 游戏包被 AppOpt 活跃规则覆盖(10-07应豁免): %s\n",
+                        s.gameViolation.c_str());
+        }
+        for (int i = 0; run && i < 600; ++i) usleep(100 * 1000);   // 60s
+    }
+}
+
 } // namespace uro
+
