@@ -23,6 +23,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(MOD / "module.prop", "module.prop")
     z.write(MOD / "service.sh", "service.sh")
     z.write(MOD / "uninstall.sh", "uninstall.sh")
+    z.write(MOD / "webroot" / "index.html", "webroot/index.html")   # 调度看板（KSU WebUI）
     z.write(BIN, "bin/URORuntime")
     # 可执行权限位（KSU 解压后按此还原）
     for n in ("service.sh", "uninstall.sh", "bin/URORuntime"):

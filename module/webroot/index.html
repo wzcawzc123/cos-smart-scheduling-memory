@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UnifiedRootOptimizer 看板</title>
+<style>
+:root{color-scheme:light dark;--bg:#f2f2f7;--card:#fff;--tx:#1c1c1e;--sub:#6e6e73;--acc:#0a84ff;--ok:#30d158;--warn:#ff9f0a;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--tx:#fff;--sub:#98989d}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:16px;max-width:560px;margin:0 auto}
+h1{font-size:22px;font-weight:700;letter-spacing:-.4px}
+h1 small{font-size:12px;color:var(--sub);font-weight:400;margin-left:8px}
+.card{background:var(--card);border-radius:16px;padding:14px 16px;margin-top:12px}
+.level{font-size:34px;font-weight:800;letter-spacing:-1px;font-family:var(--mono)}
+.level.ps{color:var(--warn)}.level.bl{color:var(--ok)}.level.pf{color:var(--acc)}
+.why{color:var(--sub);font-size:13px;margin-top:2px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid rgba(128,128,128,.14);font-size:14px}
+.row:first-of-type{border-top:0}
+.k{color:var(--sub)}.v{font-family:var(--mono);font-size:13px}
+.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:12px;font-family:var(--mono)}
+.tag.on{background:rgba(48,209,88,.18);color:var(--ok)}.tag.off{background:rgba(255,69,58,.16);color:#ff453a}
+.tag.dirty{background:rgba(255,159,10,.2);color:var(--warn)}
+h2{font-size:13px;color:var(--sub);font-weight:600;margin-top:18px;text-transform:uppercase;letter-spacing:.5px}
+.tl{list-style:none}
+.tl li{display:flex;gap:10px;padding:6px 0;border-top:1px solid rgba(128,128,128,.12);font-size:13px}
+.tl li:first-child{border-top:0}
+.tl time{color:var(--sub);font-family:var(--mono);flex:0 0 auto}
+.tl b{font-family:var(--mono);font-weight:700;flex:0 0 132px}
+.tl span{color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sw{position:relative;width:50px;height:30px;border-radius:15px;background:#39393d;transition:.2s;cursor:pointer;flex:0 0 auto}
+.sw.on{background:var(--ok)}
+.sw i{position:absolute;top:2px;left:2px;width:26px;height:26px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on i{left:22px}
+.hint{font-size:12px;color:var(--sub);margin-top:8px}
+.err{color:#ff453a;font-size:13px}
+</style>
+</head>
+<body>
+<h1>UnifiedRootOptimizer<small id="ver">…</small></h1>
+
+<div class="card">
+  <div class="level" id="lvl">…</div>
+  <div class="why" id="why">读取中…</div>
+  <div class="row" style="margin-top:10px">
+    <span class="k">接管总闸 enforce</span>
+    <span style="display:flex;gap:10px;align-items:center"><span class="tag" id="ent">…</span><span class="sw" id="sw"><i></i></span></span>
+  </div>
+  <div class="row"><span class="k">基线状态</span><span class="v" id="base">…</span></div>
+  <div class="row"><span class="k">看门狗</span><span class="v" id="wd">…</span></div>
+</div>
+
+<h2>档位时间线</h2>
+<div class="card"><ul class="tl" id="tl"><li>读取中…</li></ul></div>
+
+<h2>写入证据（当前生效值）</h2>
+<div class="card" id="ev">…</div>
+<p class="hint">数据源：telemetry.jsonl / bridge.state / cpu.state / memory.json / uag sysfs。每次档位切换自动记录。</p>
+<p class="hint err" id="err" style="display:none"></p>
+
+<script>
+// ===== 桥（复用 COSMemory 面板 ksu.ts 的实现要点）=====
+function detectBridge(){
+  const w=globalThis;
+  for(const o of [w.ksu,w.WebUIX,w.mmrl]) if(o&&typeof o.exec==='function') return {exec:async c=>String(await o.exec(c)??'')};
+  if(w.ksu&&typeof w.ksu.execAsync==='function') return {exec:c=>new Promise((res,rej)=>{try{w.ksu.execAsync(c,r=>res(r??''))}catch(e){rej(e)}})};
+  return null;
+}
+function b64d(s){s=s.replace(/\s+/g,'');if(!s)return'';const bin=atob(s);return new TextDecoder('utf-8').decode(Uint8Array.from(bin,ch=>ch.charCodeAt(0)))}
+async function readCmd(br,cmd){
+  // 成组再管道（避免 || 短路明文直出）；base64 保多行安全
+  const out=await br.exec('('+cmd+') | base64 | tr -d "\\n"');
+  if(!out.trim())return'';
+  try{return b64d(out)}catch{return''}
+}
+const SEG=k=>k;
+function splitSeg(d){const p=d.split(/@@SEG:([A-Za-z0-9_-]+)@@/g),o={};for(let i=1;i<p.length;i+=2)o[p[i]]=(p[i+1]??'').trim();return o}
+
+const L='/sdcard/Android/UnifiedRootOptimizer';
+// 数组 join(';')：每段自身不带尾分号，避免拼出 ';;'（sh 语法错误 → 整条命令失败）
+const batch=[
+  'echo @@SEG:prop@@;cat /data/adb/modules/uro/module.prop 2>/dev/null',
+  'echo @@SEG:conf@@;cat '+L+'/uro.conf 2>/dev/null',
+  'echo @@SEG:tel@@;tail -14 '+L+'/log/telemetry.jsonl 2>/dev/null',
+  'echo @@SEG:bridge@@;cat '+L+'/log/bridge.state 2>/dev/null',
+  'echo @@SEG:cpu@@;cat '+L+'/log/cpu.state 2>/dev/null',
+  'echo @@SEG:wd@@;tail -3 '+L+'/log/watchdog.log 2>/dev/null',
+  'echo @@SEG:json@@;grep -oE "\\"(aggressive|depth|cooldownSec)\\": [^,}]*" /data/adb/modules/COSMemory/config/memory.json 2>/dev/null',
+  'echo @@SEG:uag@@;for p in 0 3 7;do echo -n p$p=;cat /sys/devices/system/cpu/cpufreq/policy$p/uag/up_rate_limit_us 2>/dev/null;echo;done'
+].join(';');
+const G=k=>(typeof k==='string'?k:'');   // 段缺失防御（undefined 不炸）
+
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LVL={POWER_SAVE:'ps',BALANCE:'bl',PERFORMANCE:'pf',FAST:'pf',GAME:'gs',MEMORY_PRESSURE:'ps',BOOT:'bl'};
+
+let br=null, armed=false;
+function fail(m){const e=document.getElementById('err');e.style.display='block';e.textContent=m}
+
+async function refresh(){
+  if(!br){fail('未检测到 WebUI 桥（ksu/WebUIX/mmrl）');return}
+  try{
+    const seg=splitSeg(await readCmd(br,batch));
+    const sp=G(seg.prop), sc=G(seg.conf), st_=G(seg.tel), sb=G(seg.bridge), scpu=G(seg.cpu);
+    // 版本
+    const ver=(sp.match(/version=(.*)/)||[])[1]||'';
+    document.getElementById('ver').textContent=ver;
+    // 最后一条 telemetry = 当前档
+    const rows=(st_||'').split('\n').filter(l=>l.trim().startsWith('{')).map(l=>{try{return JSON.parse(l)}catch{return null}}).filter(Boolean);
+    const cur=rows[rows.length-1];
+    if(cur){
+      const lv=document.getElementById('lvl');
+      lv.textContent=cur.scenario;
+      lv.className='level '+(LVL[cur.scenario]||'bl');
+      document.getElementById('why').textContent=(cur.why||'')+(cur.handover?' · 撤权中':'');
+    }
+    // enforce 开关（双重来源：显式值；缺文件=off）
+    const en=(sc.match(/BRIDGE_ENFORCE=(\d)/)||[])[1]==='1';
+    armed=en;
+    document.getElementById('ent').innerHTML='<span class="tag '+(en?'on':'off')+'">'+(en?'ON':'OFF')+'</span>';
+    document.getElementById('sw').className='sw'+(en?' on':'');
+    // 基线
+    const bd=(sb.match(/DIRTY=(\w+)/)||[])[1]||'?';
+    const cd=(scpu.match(/DIRTY=(\w+)/)||[])[1]||'?';
+    document.getElementById('base').innerHTML=(bd==='false'&&cd==='false')?'<span class="tag on">CLEAN</span>':'<span class="tag dirty">DIRTY(内存:'+bd+' / CPU:'+cd+')</span>';
+    // watchdog 最近动作
+    const wlines=G(seg.wd).split('\n').filter(Boolean);
+    const last=wlines[wlines.length-1]||'';
+    document.getElementById('wd').innerHTML=last.includes('halt')?'<span class="tag off">HALT</span>':'<span class="tag on">正常</span>';
+    // 时间线（倒序最近 8 条）
+    const tl=document.getElementById('tl');
+    tl.innerHTML=rows.slice(-8).reverse().map(r=>{
+      const t=new Date(r.ts*1000);
+      const hh=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0');
+      return '<li><time>'+hh+'</time><b>'+esc(r.scenario)+'</b><span title="'+esc(r.why)+'">'+esc(r.why||'')+'</span></li>';
+    }).join('')||'<li>暂无记录</li>';
+    // 写入证据
+    const j=G(seg.json).replace(/"/g,'').replace(/:\s*/g,'=');
+    const u=G(seg.uag).replace(/\s+/g,' ').trim();
+    document.getElementById('ev').innerHTML=
+      '<div class="row"><span class="k">memory.json</span><span class="v">'+esc(j||'-')+'</span></div>'+
+      '<div class="row"><span class="k">uag up_rate (p0/p3/p7)</span><span class="v">'+esc(u||'-')+'</span></div>'+
+      '<div class="row"><span class="k">action_id (最新)</span><span class="v">'+esc(cur?cur.action_id:'-')+'</span></div>';
+  }catch(e){fail('读取失败: '+e)}
+}
+
+// 总闸：双击确认（防误触，同 COSMemory 面板交互）
+let confirmT=null;
+document.getElementById('sw').addEventListener('click',async()=>{
+  if(!br){fail('未检测到 WebUI 桥');return}
+  const swEl=document.getElementById('sw');
+  if(!armed&&!confirmT){ // 开启需确认
+    swEl.classList.add('on');document.getElementById('ent').innerHTML='<span class="tag dirty">再点一次确认</span>';
+    confirmT=setTimeout(()=>{confirmT=null;swEl.classList.remove('on');refresh()},2500);return;
+  }
+  if(confirmT){clearTimeout(confirmT);confirmT=null}
+  const next=armed?'0':'1';
+  await br.exec('echo BRIDGE_ENFORCE='+next+' > '+L+'/uro.conf');
+  setTimeout(refresh,300);
+});
+
+br=detectBridge();
+refresh();
+setInterval(refresh,5000);
+</script>
+</body>
+</html>
