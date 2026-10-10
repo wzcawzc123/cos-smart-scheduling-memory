@@ -53,6 +53,7 @@ std::string battery_json(const std::string& psRoot) {
     fc >> pct;
     std::ifstream fs(psRoot + "/battery/status");
     if (fs.is_open()) fs >> st;
+    if (st.size() > 32) st = st.substr(0, 32);   // sysfs 异常防御
     std::ifstream fi(psRoot + "/battery/current_now");
     if (fi.is_open()) fi >> ma;
     std::ostringstream o;

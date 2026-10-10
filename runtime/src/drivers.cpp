@@ -360,19 +360,29 @@ void thread_evidence_driver(const std::string& logdir, const std::string& appopt
 // ---------- Evidence 扩展（v0.17：FPS + 温度，T-OBS 只读）----------
 // 60s 双采样：thermal → thermal.jsonl（top3+battery）；gfxinfo 前台包差分 → fps.jsonl。
 // gfxinfo 是累计计数：同包做差分得窗口增量，切包重置基线（首采只记基线行）。
+// 心跳定位：evidence.hb = 最后执行到的阶段（f65a014b 崩溃无现场的补救，v0.17.2）
+static void ev_hb(const std::string& logdir, const char* stage) {
+    std::ofstream f(logdir + "/evidence.hb", std::ios::trunc);
+    f << stage << " " << now_ms() << "\n";
+}
+
 void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool>& run) {
     std::string lastPkg;
     long lastTotal = -1, lastJanky = 0;
     while (run) {
+        ev_hb(logdir, "loop-start");
         {
+            ev_hb(logdir, "thermal-begin");
             std::string tj = thermal_json("/sys/class/thermal");
             std::string bj = battery_json("/sys/class/power_supply");   // M5 电量分母
             std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
             lf << "{\"ts\":" << now_ms() << "," << tj << "," << bj << "}\n";
+            ev_hb(logdir, "thermal-done");
         }
         {
             std::string pkg = fg->get();
             if (!pkg.empty()) {
+                ev_hb(logdir, "fps-popen-begin");
                 std::string cmd = "dumpsys gfxinfo " + pkg + " 2>/dev/null";
                 FILE* fp = popen(cmd.c_str(), "r");
                 if (fp) {
@@ -380,6 +390,7 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool
                     size_t n = fread(buf, 1, sizeof buf - 1, fp);
                     buf[n] = 0;
                     pclose(fp);
+                    ev_hb(logdir, "fps-parsed");
                     long total = -1, janky = 0;
                     if (parse_gfxinfo(buf, total, janky)) {
                         if (pkg != lastPkg || lastTotal < 0) {
@@ -400,8 +411,10 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool
                 }
             }
         }
+        ev_hb(logdir, "loop-end");
         for (int i = 0; run && i < 600; ++i) usleep(100 * 1000);   // 60s
     }
+    ev_hb(logdir, "exited");
 }
 
 } // namespace uro
