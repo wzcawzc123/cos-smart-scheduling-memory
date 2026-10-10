@@ -6,7 +6,7 @@ ui_print "- UnifiedRootOptimizer v0.16+ / COSMemory 联动检查"
 if [ -d /data/adb/modules/COSMemory ]; then
     ui_print "- COSMemory 已安装，跳过联装"
 else
-    CMZIP="$MODPATH/cosmemory/COSMemory_v1.1.5.zip"
+    CMZIP="$MODPATH/cosmemory/COSMemory_v1.2.1.zip"
     if [ -f "$CMZIP" ]; then
         KSU_BIN="$(command -v ksud 2>/dev/null)"
         [ -z "$KSU_BIN" ] && KSU_BIN=/data/adb/ksu/bin/ksud

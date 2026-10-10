@@ -2,7 +2,7 @@
 
 > Android Root 系统级资源协同调度框架 —— COSMemory × 线程优化的**统一策略大脑**
 >
-> 一个框架、多个执行器、一个策略大脑。当前 **v0.14.0**，四档自治调度 + 智能感知已实机运行于一加 11（ColorOS 16）。
+> 一个框架、多个执行器、一个策略大脑。当前 **v0.17.1**，四档自治调度 + 智能感知 + 执行器接入（COSMemory 指挥链 / AppOpt 感知链）+ 全套 Evidence 采样已实机运行于一加 11（ColorOS 16）。
 
 ## 它是什么
 
@@ -47,6 +47,21 @@ com.tencent.mm*|200000|-1      # 微信系：降频迟滞 200ms
 
 安全边界：GAME（让权）与 POWER_SAVE（省电）**不接受画像覆盖**。
 
+## 执行器接入与 Evidence（v0.15-v0.17）
+
+```text
+URO（决策大脑）
+ ├─ memory.json 四旋钮 ──▶ COSMemory 引擎   ← 决策级接入（2PC：PREPARE→写→COMMIT）
+ ├─ uag rate 参数 ──────▶ CPU 三簇           ← 档位化 up/down 迟滞
+ ├─ 观察 AppOpt ────────▶ thread.jsonl       ← 路线a：66规则/五组cpuset/豁免校验/URO-GEN框架
+ └─ Evidence 采样（60s）─▶ thermal+power.jsonl（温度top3/电量pct/chg/mA）
+                          fps.jsonl（gfxinfo 前台差分）thread.jsonl（cpuset组成员）
+```
+
+- **总闸**：`uro.conf` 的 `BRIDGE_ENFORCE`（热读；A/B 实测 946/946 零泄漏）
+- **COSMemory 联装**：刷入包内嵌联动（目录存在即跳过、缺失才装、失败不 abort）
+- **M5 实测**：A/B/M0 三方报告见 `docs/M5_报告_v1.md`（口径矛盾如实呈现，不出方向性结论）
+
 ## 可靠性与可观测
 
 - KSU 模块自启 + 30s 看门狗 + **崩溃残留自动归还基线**（`bridge.state`/`cpu.state` DIRTY 状态机）+ 卸载兜底
@@ -70,7 +85,7 @@ com.tencent.mm*|200000|-1      # 微信系：降频迟滞 200ms
 ## 开发与测试
 
 ```bash
-# 全量单测（host 构建，无需设备）—— 当前 141 断言
+# 全量单测（host 构建，无需设备）—— 当前 167 断言
 sh runtime/tests/run_test.sh            # all | bridge | m2 | m3
 
 # NDK 构建（需 binfmt/qemu，见 docs/M0_构建链验证_v1.md）
@@ -87,6 +102,9 @@ python3 runtime/tools/pack_module.py
 | A 可靠性 | 自启/看门狗/崩溃归还/卸载兜底 | ✅ |
 | C 可观测 | telemetry + 死亡归因 | ✅ |
 | 第1步 四档收敛 | 四档自治、去系统 mode、WebUI 看板 | ✅ |
+| 架构定案实施 | AppOpt 路线a（ThreadController P1）+ COSMemory 1+2 联装 | ✅ |
+| Evidence 扩展 | 温度 / FPS / 电量三源采样 + M5 协议与报告 | ✅ |
+| AppOpt 指挥链 | URO-GEN 真规则 + GAME 档协调 | ⬜ 下一阶段 |
 | 第2步 智能感知 | Touch/AmSwitch/App 画像（CT 能力搬运） | ✅ |
 | 第3步 D | 测试套件 + 0.x 正式发布 | 🔄 本阶段 |
 | 第4步 E | cpuset 掉帧实验 / T-OBS 热观测 / **M5 收益实测** | ⬜ |

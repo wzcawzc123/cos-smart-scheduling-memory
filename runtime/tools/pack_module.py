@@ -26,9 +26,9 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(MOD / "customize.sh", "customize.sh")   # COSMemory 联动（架构定案 1+2 的"1"）
     z.write(MOD / "webroot" / "index.html", "webroot/index.html")   # 调度看板（KSU WebUI）
     # COSMemory 内嵌包（联动装；缺失仅降级提示不阻断）
-    cm = pathlib.Path("/workspace/COSMemory_v1.1.5.zip")
+    cm = pathlib.Path("/workspace/COSMemory_v1.2.1.zip")
     if cm.exists():
-        z.write(cm, "cosmemory/COSMemory_v1.1.5.zip")
+        z.write(cm, "cosmemory/COSMemory_v1.2.1.zip")
     else:
         print("WARN: 内嵌 COSMemory 包缺失 -> 联动降级")
     z.write(BIN, "bin/URORuntime")
