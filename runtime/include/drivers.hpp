@@ -68,6 +68,8 @@ void ensure_uro_gen_block(const std::string& confPath);
 // 指挥链①：GAME 自动豁免（注释活跃游戏规则+[URO-EXEMPT]标记，幂等；出GAME按标记还原）
 int exempt_game_rules(const std::string& confPath, const std::string& gameListPath);
 int restore_exempted(const std::string& confPath);
+// 指挥链②：画像第四字段(pattern|down|up|cpuset)对账生成 URO-GEN 规则（幂等；通配跳过）
+int reconcile_uro_gen(const std::string& confPath, const std::string& profilesPath);
 void thread_evidence_driver(const std::string& logdir, const std::string& appoptConf,
                             const std::string& gamePath, const std::string& cpusetRoot,
                             std::atomic<bool>& run);

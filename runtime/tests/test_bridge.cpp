@@ -491,6 +491,61 @@ int main() {
         std::printf("[exempt] ok (豁免/标记/幂等/不动用户行/还原)\n");
     }
 
+    // ---- 18. [urogen] 指挥链② 画像第四字段生成 ----
+    {
+        std::string d = dir + "_ugen";
+        system(("mkdir -p " + d).c_str());
+        { std::ofstream f(d + "/applist.conf");
+          f << "# 用户规则(区块外)\n"
+               "com.keep.me=e-core\n"
+               "# ---- URO-GEN-BEGIN (x) ----\n"
+               "# ---- URO-GEN-END ----\n"
+               "com.also.keep=0-7\n"; }
+        { std::ofstream f(d + "/profiles.txt");
+          f << "com.tencent.mm|250000|80000|hp-core\n"
+               "com.nofour|100000|-1\n"
+               "com.wild*|1|1|e-core\n"
+               "# com.commented|1|1|p-core\n"
+               "com.blank|1|1|\n"; }
+
+        int n = reconcile_uro_gen(d + "/applist.conf", d + "/profiles.txt");
+        CHECK(n == 1, "仅第四字段非空且无通配的画像生成(1条)");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          auto c = ss.str();
+          CHECK(c.find("URO-GEN-BEGIN") != std::string::npos &&
+                c.find("com.tencent.mm=hp-core") != std::string::npos, "规则写入区块内");
+          size_t bpos = c.find("URO-GEN-BEGIN"), epos = c.find("URO-GEN-END");
+          CHECK(bpos < epos && c.find("com.tencent.mm", epos + 10) == std::string::npos,
+                "生成行只在区块内(END后无泄漏)");
+          CHECK(c.find("com.keep.me=e-core") != std::string::npos &&
+                c.find("com.also.keep=0-7") != std::string::npos, "区块外用户规则零改动"); }
+        CHECK(reconcile_uro_gen(d + "/applist.conf", d + "/profiles.txt") == 0, "幂等(二次0)");
+
+        // EXEMPT 兼容：生成行被豁免标记后，对账不复活
+        { std::ifstream f(d + "/applist.conf"); std::stringstream ss; ss << f.rdbuf();
+          std::string c = ss.str();
+          size_t pos = c.find("com.tencent.mm=hp-core");
+          c.replace(pos, std::string("com.tencent.mm=hp-core").size(),
+                    "# [URO-EXEMPT] com.tencent.mm=hp-core");
+          std::ofstream o(d + "/applist.conf", std::ios::trunc); o << c; }
+        CHECK(reconcile_uro_gen(d + "/applist.conf", d + "/profiles.txt") == 0,
+              "豁免态对账=0(不复活)");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          CHECK(ss.str().find("# [URO-EXEMPT] com.tencent.mm=hp-core") != std::string::npos,
+                "豁免标记保持"); }
+
+        // 画像变化 → 重生成（换核组）
+        { std::ofstream f(d + "/profiles.txt");
+          f << "com.tencent.mm|250000|80000|e-core\n"; }
+        int n2 = reconcile_uro_gen(d + "/applist.conf", d + "/profiles.txt");
+        CHECK(n2 == 1, "画像变更重生成(1)");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          auto c = ss.str();
+          CHECK(c.find("com.tencent.mm=e-core") != std::string::npos, "新核组已写入");
+          CHECK(c.find("hp-core") == std::string::npos, "旧规则被替换"); }
+        std::printf("[urogen] ok (第四字段/区块边界/幂等/EXEMPT兼容/热改重生成)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

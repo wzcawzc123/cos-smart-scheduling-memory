@@ -162,4 +162,91 @@ int restore_exempted(const std::string& confPath) {
     return n;
 }
 
+
+// ===== AppOpt 指挥链②：画像 → URO-GEN 区块规则生成 =====
+// 画像格式 v0.14: pattern|down|up ；扩展第四字段: pattern|down|up|cpuset
+// cpuset ∈ AppOpt 组别名(e-core/p-core/hp-core) 或组名(0-7/3-7/...)；空=不生成。
+// 对账语义：区块内行集 == 目标行集则不动；带 * 通配的画像保守跳过(AppOpt 通配语义未验)。
+// EXEMPT 兼容：区块内被 # [URO-EXEMPT] 标记的行 strip 后视为已存在 → 不复活豁免。
+struct ProfileRule { std::string pattern; std::string cpuset; };
+
+static std::vector<ProfileRule> parse_profile_rules(const std::string& profilesPath) {
+    std::vector<ProfileRule> out;
+    for (auto& line : read_lines(profilesPath)) {
+        std::string l = line;
+        auto h = l.find('#'); if (h != std::string::npos) l = l.substr(0, h);
+        l = trim_local(l);
+        if (l.empty()) continue;
+        std::vector<std::string> f;
+        size_t pos = 0;
+        while (true) {
+            size_t bar = l.find('|', pos);
+            if (bar == std::string::npos) { f.push_back(l.substr(pos)); break; }
+            f.push_back(l.substr(pos, bar - pos));
+            pos = bar + 1;
+        }
+        if (f.size() < 4) continue;                       // 无第四字段
+        ProfileRule r{trim_local(f[0]), trim_local(f[3])};
+        if (r.pattern.empty() || r.cpuset.empty()) continue;
+        out.push_back(r);
+    }
+    return out;
+}
+
+int reconcile_uro_gen(const std::string& confPath, const std::string& profilesPath) {
+    auto rules = parse_profile_rules(profilesPath);
+    auto lines = read_lines(confPath);
+    if (lines.empty()) return 0;
+
+    // 定位区块
+    int b = -1, e = -1;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (lines[i].find("URO-GEN-BEGIN") != std::string::npos) b = (int)i;
+        else if (lines[i].find("URO-GEN-END") != std::string::npos) e = (int)i;
+    }
+    if (b < 0 || e < 0 || e <= b) return 0;               // 无区块（ensure 负责建）
+
+    // 目标行集（带通配跳过统计）
+    std::vector<std::string> want;
+    int skipped = 0;
+    for (auto& r : rules) {
+        if (r.pattern.find('*') != std::string::npos) { ++skipped; continue; }
+        want.push_back(r.pattern + "=" + r.cpuset);
+    }
+
+    // 现状（strip EXEMPT 标记后比较，保留豁免状态）
+    std::vector<std::string> have;
+    bool anyMarked = false;
+    for (int i = b + 1; i < e; ++i) {
+        std::string l = lines[i];
+        if (l.rfind(kExemptMark, 0) == 0) { l = l.substr(std::strlen(kExemptMark)); anyMarked = true; }
+        l = trim_local(l);
+        if (!l.empty()) have.push_back(l);
+    }
+
+    if (have == want) return 0;                           // 幂等：无变化（含豁免态保持）
+
+    // 重写区块内容（保留豁免态：目标行若在现状中被标记 → 写回时带标记）
+    std::vector<std::string> next;
+    for (auto& w : want) {
+        std::string out = w;
+        for (int i = b + 1; i < e; ++i) {
+            std::string l = lines[i];
+            if (l.rfind(kExemptMark, 0) == 0 &&
+                trim_local(l.substr(std::strlen(kExemptMark))) == w) {
+                out = l;                                  // 保持标记态
+                break;
+            }
+        }
+        next.push_back(out);
+    }
+    std::vector<std::string> res(lines.begin(), lines.begin() + b + 1);
+    res.insert(res.end(), next.begin(), next.end());
+    res.insert(res.end(), lines.begin() + e, lines.end());
+    backup_once(confPath);
+    atomic_write(confPath, res);
+    (void)anyMarked;
+    return (int)want.size();
+}
+
 } // namespace uro

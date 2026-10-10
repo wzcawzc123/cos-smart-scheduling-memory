@@ -338,6 +338,8 @@ void thread_evidence_driver(const std::string& logdir, const std::string& appopt
         AppOptSummary s = read_appopt(appoptConf, gamePath, cpusetRoot);
         if (s.present) {
             if (!genChecked) { ensure_uro_gen_block(appoptConf); genChecked = true; }
+            reconcile_uro_gen(appoptConf,
+                "/sdcard/Android/UnifiedRootOptimizer/app_profiles.txt");   // 指挥链② 对账
             std::ostringstream o;
             o << "{\"ts\":" << now_ms() << ",\"present\":true,\"rules\":" << s.rules << ",\"groups\":{";
             for (size_t i = 0; i < s.groups.size(); ++i) {

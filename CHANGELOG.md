@@ -3,6 +3,16 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.19.0（versionCode 1900）— AppOpt 指挥链②：画像核组生成（URO-GEN 真规则）
+- 画像扩展第四字段 `pattern|down|up|cpuset`（e-core/p-core/hp-core/组名）；
+  `reconcile_uro_gen` 60s 对账 → 生成 `<pkg>=<核组>` 写入 URO-GEN 区块
+- 对账语义：行集相同不动（幂等）；**EXEMPT 兼容**（标记行 strip 后比较=豁免态不被复活、
+  重写时保持标记）；区块外用户规则零改动（原子写+备份）
+- 通配符画像保守跳过（AppOpt 通配语义未验，不生成+静默计数）；无画像文件=安全 0
+- 单测 +10（第四字段/区块边界/幂等/EXEMPT兼容/热改重生成），186 全过
+- 真机三步闭环：无画像幂等空区块 → 注入画像 60s 生成 `com.coolapk.market=p-core`
+  → 删画像 60s 区块复空、conf 110 行零损坏
+
 ## v0.18.0（versionCode 1800）— AppOpt 指挥链①：GAME 自动豁免
 - `exempt_game_rules` / `restore_exempted`（appopt.cpp，原子写 tmp+rename、首次备份、幂等）：
   进 GAME 把活跃游戏规则注释并打 `# [URO-EXEMPT]` 标记；出 GAME 按标记还原
