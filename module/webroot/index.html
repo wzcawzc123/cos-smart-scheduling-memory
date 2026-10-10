@@ -123,6 +123,9 @@ body{
 <div class="sec"><svg class="si si-sec" viewBox="0 0 24 24"><use href="#i-code-fill"/></svg>写入证据</div>
 <div class="card" id="ev">…</div>
 
+<div class="sec"><svg class="si si-sec" viewBox="0 0 24 24"><use href="#i-sparkling-fill"/></svg>Evidence 采样</div>
+<div class="card" id="evid"><div class="row"><span class="val">读取中…</span></div></div>
+
 <p class="foot">数据源：telemetry.jsonl · bridge.state · cpu.state · memory.json · uag sysfs · 每 5 秒刷新</p>
 <p class="foot err" id="err" style="display:none"></p>
 
@@ -154,7 +157,11 @@ const batch=[
   'echo @@SEG:cpu@@;cat '+L+'/log/cpu.state 2>/dev/null',
   'echo @@SEG:wd@@;tail -3 '+L+'/log/watchdog.log 2>/dev/null',
   'echo @@SEG:json@@;grep -oE "\\"(aggressive|depth|cooldownSec)\\": [^,}]*" /data/adb/modules/COSMemory/config/memory.json 2>/dev/null',
-  'echo @@SEG:uag@@;for p in 0 3 7;do echo -n p$p=;cat /sys/devices/system/cpu/cpufreq/policy$p/uag/up_rate_limit_us 2>/dev/null;echo;done'
+  'echo @@SEG:uag@@;for p in 0 3 7;do echo -n p$p=;cat /sys/devices/system/cpu/cpufreq/policy$p/uag/up_rate_limit_us 2>/dev/null;echo;done',
+  'echo @@SEG:pw@@;tail -1 '+L+'/log/power.jsonl 2>/dev/null',
+  'echo @@SEG:th@@;tail -1 '+L+'/log/thermal.jsonl 2>/dev/null',
+  'echo @@SEG:fps@@;tail -3 '+L+'/log/fps.jsonl 2>/dev/null',
+  'echo @@SEG:thr@@;tail -1 '+L+'/log/thread.jsonl 2>/dev/null'
 ].join(';');
 
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -211,6 +218,26 @@ async function refresh(){
       '<div class="row"><span class="name">memory.json</span><span class="val">'+esc(j||'-')+'</span></div>'+
       '<div class="row"><span class="name">uag up_rate</span><span class="val">'+esc(u||'-')+'</span></div>'+
       '<div class="row"><span class="name">最新 action_id</span><span class="val">'+esc(cur?cur.action_id:'-')+'</span></div>';
+    // Evidence 采样（power/thermal/fps/thread 四源，60s 落盘 5s 展示）
+    try{
+      const pw=JSON.parse(G(seg.pw)||'{}'), th=JSON.parse(G(seg.th)||'{}');
+      const frows=(G(seg.fps)||'').split('\n').filter(l=>l.trim().startsWith('{')).map(l=>{try{return JSON.parse(l)}catch{return null}}).filter(Boolean);
+      const thr=JSON.parse(G(seg.thr)||'{}');
+      const chgMap={Discharging:'放电',Charging:'充电',Full:'满电'};
+      const bat=(th.battery!=null&&th.battery>-999)?th.battery+'°':'-';
+      const top=(th.top||[]).map(t=>t.t+' '+t.c+'°').join(' · ')||'-';
+      const pwr=(pw.pct!=null)?(pw.pct+'% · '+(chgMap[pw.chg]||pw.chg||'?')+' '+(pw.mA!=null&&pw.mA!==-1?pw.mA+'mA':'')):'采样中';
+      let fpsLine='-';
+      const lf=frows[frows.length-1];
+      if(lf){ if(lf.reset){fpsLine='基线重置 '+String(lf.pkg||'').slice(0,28)}
+        else{const dt=lf.frames||0; fpsLine=Math.round(dt/60)+' fps · jank '+(dt?((lf.janky||0)*100/dt).toFixed(1):'0')+'%';} }
+      const rules=thr.present?(thr.rules+' 规则 · 组 '+Object.keys(thr.groups||{}).join('/')):'未发现 AppOpt';
+      document.getElementById('evid').innerHTML=
+        '<div class="row"><span class="name">电量</span><span class="val">'+esc(pwr)+' · 电池 '+esc(bat)+'</span></div>'+
+        '<div class="row"><span class="name">CPU 热点</span><span class="val">'+esc(top)+'</span></div>'+
+        '<div class="row"><span class="name">帧率(60s窗)</span><span class="val">'+esc(fpsLine)+'</span></div>'+
+        '<div class="row"><span class="name">AppOpt</span><span class="val">'+esc(rules)+'</span></div>';
+    }catch(e){}
   }catch(e){fail('读取失败: '+e)}
 }
 
