@@ -145,6 +145,14 @@ int main(int argc, char** argv) {
             if (line.rfind("BRIDGE_ENFORCE=1", 0) == 0) return true;
         return false;
     };
+    auto read_game_exempt = [](const char* p) -> bool {
+        std::ifstream f(p);
+        if (!f.is_open()) return true;           // 文件缺省 = 开（10-07 用户意图）
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("APPOPT_GAME_EXEMPT=0", 0) == 0) return false;
+        return true;
+    };
     bool argEnforce = (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0);
     bool bridgeEnforce = argEnforce || read_bridge_enforce(kUroConf);   // 仅用于启动日志
     signal(SIGINT, on_stop); signal(SIGTERM, on_stop);
@@ -250,6 +258,19 @@ int main(int argc, char** argv) {
                   " gen=" + std::to_string(dec.generation) +
                   " handover=" + (dec.tactics.handover ? "1" : "0") +
                   " why=" + dec.why);
+
+        // AppOpt 指挥链①：GAME 豁免（changed 门=边沿；两函数幂等，状态靠标记自持）
+        if (read_game_exempt(kUroConf)) {
+            const char* aconf = "/data/adb/modules/AppOpt/applist.conf";
+            std::string glist = std::string(logdir) + "/game_apps.txt";
+            if (dec.scenario == Scenario::GAME) {
+                int n = exempt_game_rules(aconf, glist);
+                if (n > 0) plog.line("  APPOPT-EXEMPT +" + std::to_string(n) + " rules [URO-EXEMPT]");
+            } else {
+                int n = restore_exempted(aconf);
+                if (n > 0) plog.line("  APPOPT-EXEMPT restore " + std::to_string(n) + " rules");
+            }
+        }
 
         if (dec.tactics.handover) {
             // §5.5 全量让权的准确语义：

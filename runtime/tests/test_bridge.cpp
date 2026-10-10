@@ -455,6 +455,42 @@ int main() {
         std::printf("[evidence] ok (温度top3/battery/gfxinfo解析)\n");
     }
 
+    // ---- 17. [exempt] AppOpt 指挥链① GAME 豁免 ----
+    {
+        std::string d = dir + "_exm";
+        system(("mkdir -p " + d).c_str());
+        { std::ofstream f(d + "/applist.conf");
+          f << "com.tencent.mm=e-core {\n"
+               "  RenderThread=hp-core\n"
+               "}\n"
+               "com.tencent.tmgp.sgame=hp-core\n"
+               "# com.oplus.games=hp-core\n"; }
+        { std::ofstream f(d + "/game.txt");
+          f << "com.tencent.tmgp.sgame\ncom.oplus.games\n"; }
+
+        int n1 = exempt_game_rules(d + "/applist.conf", d + "/game.txt");
+        CHECK(n1 == 1, "只豁免活跃游戏规则(1行)");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          auto c = ss.str();
+          CHECK(c.find("# [URO-EXEMPT] com.tencent.tmgp.sgame") != std::string::npos,
+                "标记注释已写入");
+          CHECK(c.find("# [URO-EXEMPT] # com.oplus.games") == std::string::npos,
+                "用户注释行不被触碰");
+          CHECK(c.find("com.tencent.mm=e-core") != std::string::npos, "非游戏规则不动"); }
+        CHECK(exempt_game_rules(d + "/applist.conf", d + "/game.txt") == 0, "幂等(二次0)");
+        { std::ifstream f(d + "/applist.conf.uro_exempt.bak");
+          CHECK(f.is_open(), "首次豁免前已备份"); }
+
+        int r1 = restore_exempted(d + "/applist.conf");
+        CHECK(r1 == 1, "出GAME还原1行");
+        { std::ifstream f(d + "/applist.conf"); std::ostringstream ss; ss << f.rdbuf();
+          auto c = ss.str();
+          CHECK(c.find("com.tencent.tmgp.sgame=hp-core") != std::string::npos &&
+                c.find("[URO-EXEMPT]") == std::string::npos, "还原后无标记且规则复活"); }
+        CHECK(restore_exempted(d + "/applist.conf") == 0, "还原幂等(0)");
+        std::printf("[exempt] ok (豁免/标记/幂等/不动用户行/还原)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

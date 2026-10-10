@@ -65,6 +65,9 @@ struct AppOptSummary {
 AppOptSummary read_appopt(const std::string& confPath, const std::string& gamePath,
                           const std::string& cpusetRoot);
 void ensure_uro_gen_block(const std::string& confPath);
+// 指挥链①：GAME 自动豁免（注释活跃游戏规则+[URO-EXEMPT]标记，幂等；出GAME按标记还原）
+int exempt_game_rules(const std::string& confPath, const std::string& gameListPath);
+int restore_exempted(const std::string& confPath);
 void thread_evidence_driver(const std::string& logdir, const std::string& appoptConf,
                             const std::string& gamePath, const std::string& cpusetRoot,
                             std::atomic<bool>& run);

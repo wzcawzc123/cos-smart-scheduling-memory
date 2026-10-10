@@ -1,6 +1,6 @@
 id=uro
 name=UnifiedRootOptimizer
-version=v0.17.2
-versionCode=1702
+version=v0.18.0
+versionCode=1800
 author=是你吗薰儿
-description=四档自治+智能感知+App画像+2PC+屏幕自适应+ThreadController+Evidence(温度/FPS/电量+心跳定位)+COSMemory v1.2.1联装+ WebUI看板
+description=四档自治+智能感知+App画像+2PC+AppOpt指挥链(GAME自动豁免)+Evidence(温度/FPS/电量+心跳)+COSMemory v1.2.1联装+ WebUI看板

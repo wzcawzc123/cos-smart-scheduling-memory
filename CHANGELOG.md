@@ -3,6 +3,15 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.18.0（versionCode 1800）— AppOpt 指挥链①：GAME 自动豁免
+- `exempt_game_rules` / `restore_exempted`（appopt.cpp，原子写 tmp+rename、首次备份、幂等）：
+  进 GAME 把活跃游戏规则注释并打 `# [URO-EXEMPT]` 标记；出 GAME 按标记还原
+- **只碰活跃行**：用户手改的注释行永不触碰（10-07 王者手动豁免语义的自动化）
+- 挂钩 `run_policy` 的 changed 门（天然边沿）+ `uro.conf` 开关 `APPOPT_GAME_EXEMPT`
+  （默认开，=0 关）；plog 记 `APPOPT-EXEMPT +N/restore N`
+- 单测 +9（豁免/标记/幂等/不动用户行/还原/还原幂等），176 全过
+- 真机：部署零误伤（conf 标记 0、110 行完整、四档正常）；GAME 闭环待下次游戏触发验收
+
 ## v0.17.2（versionCode 1702）— 电量 Evidence 转正 + 崩溃心跳定位
 - `evidence_driver` 心跳定位器 `ev_hb`（8 处阶段标记 → `evidence.hb`）：
   f65a014b 崩溃无现场的补救——再崩可读最后阶段精确定位

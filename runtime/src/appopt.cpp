@@ -2,6 +2,7 @@
 // 编译入 host 套件（run_test.sh）与 NDK 主构建。
 #include "drivers.hpp"
 #include <dirent.h>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -84,6 +85,81 @@ void ensure_uro_gen_block(const std::string& confPath) {
     std::ofstream o(confPath, std::ios::app);
     o << "\n# ---- URO-GEN-BEGIN (UnifiedRootOptimizer 规则代理区块：URO 只在本标记内追加，勿删标记行) ----\n"
          "# ---- URO-GEN-END ----\n";
+}
+
+
+// ===== AppOpt 指挥链①：GAME 自动豁免（10-07 手动处置的自动化）=====
+// 语义：把含游戏包的活跃规则行注释掉并打 [URO-EXEMPT] 标记；出 GAME 按标记还原。
+// 只碰：活跃行（未注释）且包含 game_apps 列表中包名的行；用户手改的注释行永不触碰。
+// 幂等：已标记行跳过；原子写（tmp+rename）防 AppOpt 读到半写文件；首次操作前备份。
+static const char* kExemptMark = "# [URO-EXEMPT] ";
+
+static std::vector<std::string> read_lines(const std::string& f) {
+    std::vector<std::string> out;
+    std::ifstream in(f);
+    std::string l;
+    while (std::getline(in, l)) out.push_back(l);
+    return out;
+}
+
+static bool atomic_write(const std::string& f, const std::vector<std::string>& lines) {
+    std::string tmp = f + ".uro_tmp";
+    { std::ofstream o(tmp, std::ios::trunc);
+      if (!o.is_open()) return false;
+      for (auto& l : lines) o << l << "\n"; }
+    return std::rename(tmp.c_str(), f.c_str()) == 0;
+}
+
+static void backup_once(const std::string& f) {
+    std::ifstream chk(f + ".uro_exempt.bak");
+    if (chk.is_open()) return;
+    std::vector<std::string> lines = read_lines(f);
+    std::ofstream bo(f + ".uro_exempt.bak", std::ios::trunc);
+    for (auto& l : lines) bo << l << "\n";
+}
+
+int exempt_game_rules(const std::string& confPath, const std::string& gameListPath) {
+    std::vector<std::string> pkgs;
+    for (auto& l : read_lines(gameListPath)) {
+        auto h = l.find('#');
+        if (h != std::string::npos) l = l.substr(0, h);
+        l = trim_local(l);
+        if (!l.empty()) pkgs.push_back(l);
+    }
+    if (pkgs.empty()) return 0;
+    auto lines = read_lines(confPath);
+    if (lines.empty()) return 0;
+    int n = 0;
+    for (auto& l : lines) {
+        if (l.rfind(kExemptMark, 0) == 0) continue;        // 已标记
+        if (l.find('#') == 0) continue;                     // 用户注释行不动
+        std::string t = l;
+        auto h = t.find('#'); if (h != std::string::npos) t = t.substr(0, h);
+        if (trim_local(t).empty()) continue;
+        for (auto& pkg : pkgs) {
+            if (l.find(pkg) != std::string::npos) {
+                l = std::string(kExemptMark) + l;
+                ++n;
+                break;
+            }
+        }
+    }
+    if (n > 0) { backup_once(confPath); atomic_write(confPath, lines); }
+    return n;
+}
+
+int restore_exempted(const std::string& confPath) {
+    auto lines = read_lines(confPath);
+    if (lines.empty()) return 0;
+    int n = 0;
+    for (auto& l : lines) {
+        if (l.rfind(kExemptMark, 0) == 0) {
+            l = l.substr(std::strlen(kExemptMark));
+            ++n;
+        }
+    }
+    if (n > 0) atomic_write(confPath, lines);
+    return n;
 }
 
 } // namespace uro
