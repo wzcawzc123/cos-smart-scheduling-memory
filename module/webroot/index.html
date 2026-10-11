@@ -126,6 +126,9 @@ body{
 <div class="sec"><svg class="si si-sec" viewBox="0 0 24 24"><use href="#i-sparkling-fill"/></svg>Evidence 采样</div>
 <div class="card" id="evid"><div class="row"><span class="val">读取中…</span></div></div>
 
+<div class="sec"><svg class="si si-sec" viewBox="0 0 24 24"><use href="#i-progress-fill"/></svg>L5 洞察（只读）</div>
+<div class="card" id="ins"><div class="row"><span class="val">读取中…</span></div></div>
+
 <p class="foot">数据源：telemetry.jsonl · bridge.state · cpu.state · memory.json · uag sysfs · 每 5 秒刷新</p>
 <p class="foot err" id="err" style="display:none"></p>
 
@@ -152,7 +155,7 @@ const L='/sdcard/Android/UnifiedRootOptimizer';
 const batch=[
   'echo @@SEG:prop@@;cat /data/adb/modules/uro/module.prop 2>/dev/null',
   'echo @@SEG:conf@@;cat '+L+'/uro.conf 2>/dev/null',
-  'echo @@SEG:tel@@;tail -14 '+L+'/log/telemetry.jsonl 2>/dev/null',
+  'echo @@SEG:tel@@;tail -200 '+L+'/log/telemetry.jsonl 2>/dev/null',
   'echo @@SEG:bridge@@;cat '+L+'/log/bridge.state 2>/dev/null',
   'echo @@SEG:cpu@@;cat '+L+'/log/cpu.state 2>/dev/null',
   'echo @@SEG:wd@@;tail -3 '+L+'/log/watchdog.log 2>/dev/null',
@@ -252,6 +255,23 @@ async function refresh(){
           '<div class="row"><span class="name">CPU 调参</span><span class="val">'+
             esc('hispeed_load '+(hi||'?')+' · up 2500us')+'</span></div>';
       }catch(e){}
+    }catch(e){}
+    // L5 洞察（只读统计：档位占比 + Top App；不改任何策略）
+    try{
+      const rs=(st_||'').split('\n').filter(l=>l.trim().startsWith('{')).map(l=>{try{return JSON.parse(l)}catch{return null}}).filter(Boolean);
+      const sc={}, fg={};
+      rs.forEach(r=>{ sc[r.scenario]=(sc[r.scenario]||0)+1;
+        if(r.fg&&r.fg!=='(unknown)') fg[r.fg]=(fg[r.fg]||0)+1; });
+      const tot=rs.length||1;
+      const order=['PERFORMANCE','BALANCE','FAST','POWER_SAVE','GAME','MEMORY_PRESSURE','BOOT'];
+      const dist=order.filter(k=>sc[k]).map(k=>k.replace('_','')+' '+Math.round(sc[k]*100/tot)+'%').join(' · ');
+      const top=Object.entries(fg).sort((a,b)=>b[1]-a[1]).slice(0,3)
+        .map(([k,v])=>String(k).split('.').pop()+' '+Math.round(v*100/tot)+'%').join(' · ');
+      const el=document.getElementById('ins');
+      if(el) el.innerHTML=
+        '<div class="row"><span class="name">档位分布</span><span class="val">'+esc(dist||'-')+'</span></div>'+
+        '<div class="row"><span class="name">Top App</span><span class="val">'+esc(top||'-')+'</span></div>'+
+        '<div class="row"><span class="name">样本</span><span class="val">'+tot+' 条决策</span></div>';
     }catch(e){}
   }catch(e){fail('读取失败: '+e)}
 }
