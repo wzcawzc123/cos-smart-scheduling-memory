@@ -3,6 +3,15 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.22.0（versionCode 2200）— GpuController 实装（idle_timer 档位联动）
+- `GpuPlaceholder` → **真 GpuController**：probe 走 adapter.exists（fake root 友好）、
+  apply 写 idle_timer（幂等 lastWrote_、dryRun 支持、0=不定零写入）
+- 档位映射（tactics_for）：PERF/FAST=120（减升降频抖动）、BALANCE=80、POWER_SAVE=50、
+  GAME/压力=0（让权）；EffectivePolicy.gpu.idleTimer 新字段
+- **真机端到端实弹**：熄屏 POWER_SAVE→`idle_timer=50`、亮屏 BALANCE→`80`、
+  telemetry `gpu:ACTIVE`（DEGRADED→ACTIVE）；189 断言
+- 测试兼容修复：m2 两处旧 placeholder 预期随实装更新（probe 尊重 fake root）
+
 ## v0.21.0（versionCode 2100）— GPU 层侦察 + 观测落盘（C 组第一项第一步）
 - **侦察定案（Adreno 740 / kgsl-3d0）**：安全区 = `idle_timer`（行为参数）；
   禁区 = `max_pwrlevel`/`max_gpuclk`/`max_clock_mhz`（上限）、devfreq governor（策略）、`force_*`（调试）

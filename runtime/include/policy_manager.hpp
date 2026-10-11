@@ -17,6 +17,7 @@ namespace uro {
 
 // 单场景策略模板（§3.3 表）
 struct ScenarioTactics {
+    int gpuIdleTimer = 0;   // GPU idle_timer（0=不动；v0.22 GpuController）
     bool reclaimEnabled = true;
     bool freezeEnabled = false;
     int  maxKillPerRound = 0;
@@ -268,6 +269,14 @@ private:
                 t.freezeEnabled = false;
                 t.maxKillPerRound = 0;
                 break;
+        }
+        // GPU idle_timer 档位（v0.22：行为参数、非上限；GAME/压力 0=不动）
+        switch (s) {
+            case Scenario::PERFORMANCE:
+            case Scenario::FAST:       t.gpuIdleTimer = 120; break;
+            case Scenario::BALANCE:    t.gpuIdleTimer = 80;  break;
+            case Scenario::POWER_SAVE: t.gpuIdleTimer = 50;  break;
+            default:                   t.gpuIdleTimer = 0;   break;
         }
         return t;
     }

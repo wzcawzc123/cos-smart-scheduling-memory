@@ -618,22 +618,36 @@ private:
 // ========================== GPU / Thermal 占位（M2′）==========================
 // §9 M2′：GPU/Thermal 仅留接口占位——类在、接口在、恒 Degraded(placeholder)，
 // 不参与求交（registry.resolve 跳过 Degraded），实现留给 M2/M4。
-class GpuPlaceholder final : public Controller {
+class GpuController final : public Controller {
 public:
     const char* name() const override { return "gpu"; }
-    CtrlReport probe(SysfsAdapter&) override {
-        r_ = {CtrlState::Degraded, "M2′ placeholder — GPU Controller not implemented"};
+    CtrlReport probe(SysfsAdapter& ad) override {
+        r_ = ad.exists(kIdle)
+            ? CtrlReport{CtrlState::Active, "idle_timer 行为参数(非上限) 档位联动"}
+            : CtrlReport{CtrlState::Degraded, "idle_timer node absent — gpu skipped"};
         return r_;
     }
     void on_event(const Event&, const GlobalState&) override {}
     EffectivePolicy desire() const override { return {}; }
-    CtrlReport apply(const EffectivePolicy&, SysfsAdapter&, bool) override { return r_; }
+    CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun) override {
+        if (r_.state != CtrlState::Active) return r_;
+        int want = eff.gpu.idleTimer;
+        if (want <= 0) return r_;
+        if (want == lastWrote_) return r_;
+        if (dryRun) { r_.detail = "dry-run idle_timer=" + std::to_string(want); return r_; }
+        ad.write(kIdle, std::to_string(want), false, nullptr);
+        lastWrote_ = want;
+        r_.detail = "idle_timer=" + std::to_string(want);
+        return r_;
+    }
     CtrlState state() const override { return r_.state; }
     std::string status() const override {
-        return std::string("gpu ") + ctrl_state_name(r_.state) + " placeholder";
+        return std::string("gpu ") + ctrl_state_name(r_.state) + " " + r_.detail;
     }
 private:
+    static constexpr const char* kIdle = "/sys/class/kgsl/kgsl-3d0/idle_timer";
     CtrlReport r_{CtrlState::Probing, ""};
+    int lastWrote_ = -1;
 };
 
 class ThermalPlaceholder final : public Controller {
@@ -663,7 +677,7 @@ ControllerPtr make_memory_controller(const std::string& policyFile,
 ControllerPtr make_cpu_controller(const std::string& cpuStateFile) {
     return std::make_unique<CpuController>(cpuStateFile);
 }
-ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuPlaceholder>(); }
+ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuController>(); }
 ControllerPtr make_thermal_placeholder(){ return std::make_unique<ThermalPlaceholder>(); }
 
 } // namespace uro

@@ -128,7 +128,7 @@ static void test_partial(const std::string& root) {
 
     CHECK(reps[0].state == CtrlState::Active, "memory ACTIVE with its nodes present");
     CHECK(reps[1].state == CtrlState::Degraded, "cpu DEGRADED when cpufreq absent");
-    CHECK(reps[2].state == CtrlState::Degraded, "gpu DEGRADED (placeholder)");
+    CHECK(reps[2].state == CtrlState::Degraded, "gpu DEGRADED when kgsl absent (real GpuController v0.22)");
     CHECK(reg.any_active(), "registry still has an active controller");
 
     // resolve 只纳入 Active 的约束（Degraded 不参与求交）

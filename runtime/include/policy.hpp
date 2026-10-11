@@ -43,6 +43,7 @@ struct GpuPolicy {
     int  minFreq = -1;
     int  maxFreq = -1;
     bool boost = false;
+    int  idleTimer = 0;   // GPU 空闲降频延迟 ms（行为参数·非上限；0=不定，GAME 让权）
 };
 
 struct EffectivePolicy {
