@@ -251,6 +251,7 @@ int main(int argc, char** argv) {
         base.cpu.uagUpRateUs = dec.tactics.uagUpRateUs;   // 阶段B-CPU：uag 升频延迟
         base.cpu.uagDownRateUs = dec.tactics.uagDownRateUs; // 阶段2：uag 降频迟滞（PERFORMANCE）
         base.gpu.idleTimer = dec.tactics.gpuIdleTimer;   // v0.22 GpuController（行为参数）
+        base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
         EffectivePolicy eff = reg.resolve(base, dec.generation);
 
         char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};

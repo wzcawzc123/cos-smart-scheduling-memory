@@ -3,6 +3,20 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.25.0（versionCode 2500）— uag 富矿第一项：hispeed_load 档位联动 + watchdog 自杀修复
+- **hispeed_load 接入**（设计 v1 照单）：UagNode.hiPath、probe 探测+基线（cpu.state 新增 `HI:` 行）、
+  apply runGroup、tactics 映射（PERF/FAST=80 更早跳频、PS=95 更保守、BAL=-1 回基线）、main 映射
+- **真机闭环**：BAL=90 → 熄屏 PS=95 → 亮屏回 90（三簇、HI: 基线 3 条入档）
+- **线上 bug 修复两处（本次实弹抓到）**：
+  ① 基线补档条件漏 hi（`needSeed` 只看 up/down，老 cpu.state 非空即跳过 → hi 基线空 → 回基线写 0
+     灾难值，已手动止血复位）→ 加 `hiMissing` 检测
+  ② `runGroup` 无基线保护：`-1` 且无基线时写 0 → 改为跳过不写（同时保护 up/down 路径）
+- **watchdog 自杀根因定罪**：service.sh 两处 `exit 1`（bin 缺失/无执行位）+ 我部署时 `cp` 存在
+  「被截断窗口」→ watchdog 恰在窗口内循环即自杀（实测两轮）→ 改「记日志+下轮重试」自愈；
+  部署流程改原子替换（后续）
+- 单测 +3（[uag-hi] PERF=80/PS=95/BAL=-1），194 全过
+- 测试教训：PERF 租约 + touch 刷新 + FAST 窗口三重时间窗叠加，测试须推到窗口外（9000ms）
+
 ## v0.24.0（versionCode 2400）— L4 完成：温度趋势预判 + 帧率哨兵
 - **温度趋势预判**：`next_thermal_level` 加 `trendDeg` 参数——接近阈值（t1-6）且 5min 升温
   >=4°C → 视作已达 t1 提前一级（防撞温度墙）；driver 侧 5 采样 ring 算趋势

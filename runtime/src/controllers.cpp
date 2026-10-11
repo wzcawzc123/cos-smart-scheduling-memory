@@ -441,7 +441,9 @@ public:
                 std::string up = pre + "up_rate_limit_us";
                 if (!ad.probe(up).exists) continue;
                 std::string dn = pre + "down_rate_limit_us";
-                uagNodes_.push_back({pol, up, ad.probe(dn).exists ? dn : ""});
+                std::string hi = pre + "hispeed_load";
+                uagNodes_.push_back({pol, up, ad.probe(dn).exists ? dn : "",
+                                     ad.probe(hi).exists ? hi : ""});
             }
             if (uagNodes_.empty()) {
                 r_.detail += " uag=ABSENT";
@@ -450,15 +452,21 @@ public:
                 bool dirty = st && st->dirty;
                 std::map<std::string,int> base = st ? st->base : std::map<std::string,int>{};
                 std::map<std::string,int> baseD = st ? st->baseDown : std::map<std::string,int>{};
+                std::map<std::string,int> baseH = st ? st->baseHi : std::map<std::string,int>{};
                 auto seed = [&]() {
                     for (auto& n : uagNodes_) {
                         if (!base.count(n.policy))
                             if (auto v = ad.read(n.upPath)) base[n.policy] = atoi(v->c_str());
                         if (!n.downPath.empty() && !baseD.count(n.policy))
                             if (auto v = ad.read(n.downPath)) baseD[n.policy] = atoi(v->c_str());
+                        if (!n.hiPath.empty() && !baseH.count(n.policy))
+                            if (auto v = ad.read(n.hiPath)) baseH[n.policy] = atoi(v->c_str());
                     }
                 };
-                bool needSeed = base.empty() || baseD.empty();
+                bool hiMissing = false;
+                for (auto& n : uagNodes_)
+                    if (!n.hiPath.empty() && !baseH.count(n.policy)) { hiMissing = true; break; }
+                bool needSeed = base.empty() || baseD.empty() || hiMissing;
                 if (needSeed) seed();   // 补档与恢复是顺序关系，不是互斥（depth 案教训）
                 if (dirty) {
                     std::string rec = "CRASH-RECOVERY uag->";
@@ -474,15 +482,22 @@ public:
                                 ad.write(n.downPath, std::to_string(it2->second), false, &d) == WriteOutcome::Ok)
                                 rec += n.policy + ".dn=" + std::to_string(it2->second) + " ";
                         }
+                        if (!n.hiPath.empty()) {
+                            auto it3 = baseH.find(n.policy);
+                            if (it3 != baseH.end() &&
+                                ad.write(n.hiPath, std::to_string(it3->second), false, &d) == WriteOutcome::Ok)
+                                rec += n.policy + ".hi=" + std::to_string(it3->second) + " ";
+                        }
                     }
-                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.dirty = false;
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.dirty = false;
                     save_cpu_state(ad, cs);
                     r_.detail += " | " + rec;
                 } else if (needSeed) {
-                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.dirty = false;
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.dirty = false;
                     save_cpu_state(ad, cs);
                     r_.detail += " uag-seed(up+down)";
                 }
+                hiBase_ = baseH;
                 uagBase_ = base;
                 downBase_ = baseD;
                 r_.detail += " uagNodes=" + std::to_string(uagNodes_.size());
@@ -532,6 +547,7 @@ public:
                     const std::string& path = n.*fld;
                     if (path.empty()) continue;
                     auto bit = baseM.find(n.policy);
+                    if (effVal < 0 && bit == baseM.end()) continue;   // 无基线时 -1 不写（防 0 灾难值）
                     int baseV = bit != baseM.end() ? bit->second : 0;
                     int target = (effVal >= 0) ? effVal : baseV;
                     std::string dd;
@@ -548,8 +564,9 @@ public:
             };
             runGroup("up", &UagNode::upPath, eff.cpu.uagUpRateUs, uagBase_);
             runGroup("dn", &UagNode::downPath, eff.cpu.uagDownRateUs, downBase_);
+            runGroup("hi", &UagNode::hiPath, eff.cpu.uagHispeedLoad, hiBase_);
             if (!dryRun) {
-                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_;
+                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_; cs.baseHi = hiBase_;
                 cs.dirty = offAny; cs.phase = "COMMIT";
                 save_cpu_state(ad, cs);
             }
@@ -573,8 +590,8 @@ public:
     }
 
 private:
-    struct UagNode { std::string policy, upPath, downPath; };
-    struct CpuState { std::map<std::string,int> base, baseDown; bool dirty = false; std::string phase; };
+    struct UagNode { std::string policy, upPath, downPath, hiPath; };
+    struct CpuState { std::map<std::string,int> base, baseDown, baseHi; bool dirty = false; std::string phase; };
 
     std::optional<CpuState> read_cpu_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
@@ -591,6 +608,7 @@ private:
             else if (k == "PHASE") s.phase = v;
             else if (k.rfind("UP:", 0) == 0) s.base[k.substr(3)] = atoi(v.c_str());
             else if (k.rfind("DOWN:", 0) == 0) s.baseDown[k.substr(5)] = atoi(v.c_str());
+            else if (k.rfind("HI:", 0) == 0) s.baseHi[k.substr(3)] = atoi(v.c_str());
         }
         return s;
     }
@@ -601,6 +619,7 @@ private:
            << "PHASE=" << (cs.phase.empty() ? "COMMIT" : cs.phase) << "\n";
         for (auto& kv : cs.base) os << "UP:" << kv.first << "=" << kv.second << "\n";
         for (auto& kv : cs.baseDown) os << "DOWN:" << kv.first << "=" << kv.second << "\n";
+        for (auto& kv : cs.baseHi) os << "HI:" << kv.first << "=" << kv.second << "\n";
         std::string d;
         return ad.write(stateFile_, os.str(), false, &d);   // 档案永远真写
     }
@@ -611,6 +630,7 @@ private:
     bool cpusetOk_ = false, dirty_ = false;
     int maxHint_ = -1;
     std::vector<UagNode> uagNodes_;
+    std::map<std::string,int> hiBase_;
     std::map<std::string,int> uagBase_;
     std::map<std::string,int> downBase_;
 };

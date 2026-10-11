@@ -31,8 +31,12 @@ if [ -f "$LOG" ]; then
   [ "$sz" -gt 524288 ] && mv "$LOG" "$LOG.1"
 fi
 
-[ -f "$BIN" ] || { echo "[$(date '+%F %T')] WATCHDOG halt: bin missing $BIN" >> "$LOG"; exit 1; }
-[ -x "$BIN" ] || { echo "[$(date '+%F %T')] WATCHDOG halt: chmod failed (no exec bit) $BIN" >> "$LOG"; exit 1; }
+# 注意：不使用 exit 1 —— cp 覆盖二进制存在"被截断窗口"（实测致 watchdog 自杀两轮）；
+# 缺失/无执行位时记日志并等待下一轮重试（自愈）。
+if [ ! -f "$BIN" ]; then
+  echo "[$(date '+%F %T')] WATCHDOG warn: bin missing (will retry) $BIN" >> "$LOG"
+fi
+[ -f "$BIN" ] && chmod 755 "$BIN" 2>/dev/null
 echo "[$(date '+%F %T')] WATCHDOG start bin=$BIN" >> "$LOG"
 
 while :; do

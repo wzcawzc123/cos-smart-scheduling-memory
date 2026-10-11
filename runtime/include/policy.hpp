@@ -37,6 +37,7 @@ struct CpuPolicy {
     // governor 通用 rate_limit——两次调频动作最小间隔）。频率上限不收（Oplus 地盘）。
     int uagUpRateUs = -1;
     int uagDownRateUs = -1;
+    int  uagHispeedLoad = -1;   // uag 升频阈值（-1=回基线；v0.25 行为参数）
 };
 
 struct GpuPolicy {

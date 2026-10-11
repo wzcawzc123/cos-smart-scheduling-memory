@@ -17,7 +17,8 @@ namespace uro {
 
 // 单场景策略模板（§3.3 表）
 struct ScenarioTactics {
-    int gpuIdleTimer = 0;   // GPU idle_timer（0=不动；v0.22 GpuController）
+    int gpuIdleTimer = 0;
+    int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）   // GPU idle_timer（0=不动；v0.22 GpuController）
     bool reclaimEnabled = true;
     bool freezeEnabled = false;
     int  maxKillPerRound = 0;
@@ -296,6 +297,13 @@ private:
             case Scenario::BALANCE:    t.gpuIdleTimer = 80;  break;
             case Scenario::POWER_SAVE: t.gpuIdleTimer = 50;  break;
             default:                   t.gpuIdleTimer = 0;   break;
+        }
+        // uag hispeed_load 档位（v0.25：升频阈值——PERF/FAST 更早跳频、PS 更晚；-1=回基线）
+        switch (s) {
+            case Scenario::PERFORMANCE:
+            case Scenario::FAST:       t.uagHispeedLoad = 80; break;
+            case Scenario::POWER_SAVE: t.uagHispeedLoad = 95; break;
+            default:                   t.uagHispeedLoad = -1; break;
         }
         return t;
     }

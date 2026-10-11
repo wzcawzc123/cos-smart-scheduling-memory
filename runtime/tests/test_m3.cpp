@@ -370,5 +370,24 @@ int main() {
         std::printf("[power-guard] ok (15%%夹/8%%PS/充电豁免/why)\n");
     }
 
+    // ---- [uag-hi] hispeed_load 档位映射 ----
+    {
+        using namespace uro;
+        PolicyManager pm4;
+        Event e{EventType::TouchChanged, 1000, 1, "t", ""};
+        GlobalState st4; st4.screenOn = true; st4.foregroundPackage = "com.x";
+        auto d1 = pm4.decide(st4, e, 1000);
+        CHECK(d1.tactics.uagHispeedLoad == 80, "PERF档 hispeed_load=80");
+        st4.screenOn = false;
+        auto d2 = pm4.decide(st4, e, 2000);
+        CHECK(d2.tactics.uagHispeedLoad == 95, "PS档 hispeed_load=95");
+        st4.screenOn = true;
+        Event e2{EventType::ChargerChanged, 9000, 1, "pwr", "Discharging:50"};   // 不触发任何窗口 -> BALANCE
+        auto d3 = pm4.decide(st4, e2, 9000);   // 推过 PERFORMANCE 租约/滞回窗口
+        CHECK(d3.scenario == Scenario::BALANCE, "非触摸档=BALANCE");
+        CHECK(d3.tactics.uagHispeedLoad == -1, "BALANCE 回基线(-1)");
+        std::printf("[uag-hi] ok (PERF=80/PS=95/BAL=-1)\n");
+    }
+
 return fail == 0 ? 0 : 1;
 }
