@@ -136,9 +136,10 @@ public:
         // GAME 让权不干预（热由系统 thermal-engine 管）；压力态本身已是省电态不动。
         if (st.thermalLevel > 0 && cand != Scenario::GAME &&
             cand != Scenario::MEMORY_PRESSURE && cand != Scenario::POWER_SAVE) {
-            Scenario capped = (st.thermalLevel >= 2) ? Scenario::POWER_SAVE
-                : ((cand == Scenario::FAST || cand == Scenario::PERFORMANCE)
-                       ? Scenario::BALANCE : cand);
+            // L2 只压到 BALANCE（v0.31 修正）：系统 thermal-engine 已在做硬件降频，
+            // URO 再压 POWER_SAVE = 重复惩罚（实测 95° 用户交互体感极差）
+            Scenario capped = ((cand == Scenario::FAST || cand == Scenario::PERFORMANCE)
+                                   ? Scenario::BALANCE : cand);
             if (capped != cand) { cand = capped; why_ = "thermal-capped " + why_; thermalCapped_ = true; }
         }
 

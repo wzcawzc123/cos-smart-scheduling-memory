@@ -424,6 +424,7 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
                 int en, t1, t2;
                 read_thermal_cfg(en, t1, t2);
                 static int tLevel = 0;
+                static uint64_t tLockUntil = 0;   // 热级锁定期：进入后 3 分钟内只升不降（防边界震荡）
                 if (en == 0) {
                     if (tLevel != 0) { tLevel = 0;
                         q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal", "0:" + std::to_string(-1)}); }
@@ -435,8 +436,11 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
                     if (thIdx >= 5 && th5[thIdx % 5] > 0 && t > 0)
                         trend = t - th5[thIdx % 5];          // 5 分钟前 → 现的升温幅度
                     th5[thIdx % 5] = t; ++thIdx;
-                    int nl = next_thermal_level(tLevel, t, t1, t2, 6, trend);
-                    if (nl != tLevel) {
+                    int nl = next_thermal_level(tLevel, t, t1, t2, 8, trend);   // hyst 6->8
+                    bool promote = (nl > tLevel);
+                    bool demote = (nl < tLevel && now_ms() >= tLockUntil);   // 锁定期内不降级
+                    if (promote) tLockUntil = now_ms() + 180000;             // 进入/升级 -> 锁 3 分钟
+                    if (promote || demote) {
                         tLevel = nl;
                         q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal",
                                      std::to_string(nl) + ":" + std::to_string(t)});

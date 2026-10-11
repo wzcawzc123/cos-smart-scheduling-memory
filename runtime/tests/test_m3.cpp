@@ -343,7 +343,7 @@ int main() {
         // 级2：POWER_SAVE
         st2.thermalLevel = 2;
         auto d3 = pm2.decide(st2, e, 3000);
-        CHECK(d3.scenario == Scenario::POWER_SAVE, "L2夹->POWER_SAVE");
+        CHECK(d3.scenario == Scenario::BALANCE, "L2夹->BALANCE(v0.31修正:不叠省电惩罚)");
         // 解除：级0 恢复
         st2.thermalLevel = 0;
         auto d4 = pm2.decide(st2, e, 4000);
