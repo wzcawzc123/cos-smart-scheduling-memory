@@ -3,6 +3,17 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.26.0（versionCode 2600）— uag 第二项实验（负结果：target_loads 非独占，主动断开）+ 原子部署
+- **target_loads 实验与回滚（诚实负结果）**：
+  · 实现了完整通路（多段保留纯函数 `tl_set_first`、字符串档案 `TL:`、runGroupStr）
+  · 真机实测发现**非独占**：Oplus 熄屏时改写频率点段（2112000→1056000），URO 写入被覆盖
+  · 判定实验（20s 亮屏窗口）未覆盖"熄屏时 Oplus 写入"场景 —— **实验设计漏洞**已记教训
+  · 处置：**彻底断开**（连基线回写也不做），保留通路与档案结构备用；不制造节点争用
+  · 终验：`hi 90→95→90`（联动在岗）、`tl` 全程原样（归 Oplus）
+- **原子部署工具** `runtime/tools/deploy.sh`：kill→tmp→chmod→mv(rename 原子)→等拉起→验证；
+  实测两次 10s 拉起，消除 cp 截断窗口（watchdog 自杀根因之二）
+- 单测 +5（[tl-poly] 多段/单段/空/负值），199 全过
+
 ## v0.25.0（versionCode 2500）— uag 富矿第一项：hispeed_load 档位联动 + watchdog 自杀修复
 - **hispeed_load 接入**（设计 v1 照单）：UagNode.hiPath、probe 探测+基线（cpu.state 新增 `HI:` 行）、
   apply runGroup、tactics 映射（PERF/FAST=80 更早跳频、PS=95 更保守、BAL=-1 回基线）、main 映射

@@ -38,6 +38,7 @@ struct CpuPolicy {
     int uagUpRateUs = -1;
     int uagDownRateUs = -1;
     int  uagHispeedLoad = -1;   // uag 升频阈值（-1=回基线；v0.25 行为参数）
+    int  uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线；多段保留）
 };
 
 struct GpuPolicy {

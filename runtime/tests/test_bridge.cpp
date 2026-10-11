@@ -575,6 +575,17 @@ int main() {
         std::printf("[l4-sentry] ok (趋势预判/哨兵)\n");
     }
 
+    // ---- 21. [tl-poly] target_loads 多段改写 ----
+    {
+        using namespace uro;
+        CHECK(tl_set_first("80 2112000:95", 70) == "70 2112000:95", "多段改首段");
+        CHECK(tl_set_first("80 2361600:95", 88) == "88 2361600:95", "另一段保留");
+        CHECK(tl_set_first("80", 70) == "70", "单段");
+        CHECK(tl_set_first("", 70) == "", "空串原样");
+        CHECK(tl_set_first("80 2112000:95", -1) == "80 2112000:95", "负值原样");
+        std::printf("[tl-poly] ok (多段/单段/空/负值)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

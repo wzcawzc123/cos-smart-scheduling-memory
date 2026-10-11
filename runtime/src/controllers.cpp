@@ -1,5 +1,6 @@
 // UnifiedRootOptimizer M2′ — Memory / CPU Controller 实现 + GPU / Thermal 占位
 // 设计文档 v1.1 §5.1 §5.2；退出条件 = 缺失节点均可降级，不导致主进程退出。
+#include "drivers.hpp"
 #include "controller.hpp"
 #include <fstream>
 #include <sstream>
@@ -442,8 +443,10 @@ public:
                 if (!ad.probe(up).exists) continue;
                 std::string dn = pre + "down_rate_limit_us";
                 std::string hi = pre + "hispeed_load";
+                std::string tl = pre + "target_loads";
                 uagNodes_.push_back({pol, up, ad.probe(dn).exists ? dn : "",
-                                     ad.probe(hi).exists ? hi : ""});
+                                     ad.probe(hi).exists ? hi : "",
+                                     ad.probe(tl).exists ? tl : ""});
             }
             if (uagNodes_.empty()) {
                 r_.detail += " uag=ABSENT";
@@ -453,6 +456,8 @@ public:
                 std::map<std::string,int> base = st ? st->base : std::map<std::string,int>{};
                 std::map<std::string,int> baseD = st ? st->baseDown : std::map<std::string,int>{};
                 std::map<std::string,int> baseH = st ? st->baseHi : std::map<std::string,int>{};
+                std::map<std::string,std::string> baseTl = st ? st->baseTl
+                                                              : std::map<std::string,std::string>{};
                 auto seed = [&]() {
                     for (auto& n : uagNodes_) {
                         if (!base.count(n.policy))
@@ -461,12 +466,16 @@ public:
                             if (auto v = ad.read(n.downPath)) baseD[n.policy] = atoi(v->c_str());
                         if (!n.hiPath.empty() && !baseH.count(n.policy))
                             if (auto v = ad.read(n.hiPath)) baseH[n.policy] = atoi(v->c_str());
+                        if (!n.tlPath.empty() && !baseTl.count(n.policy))
+                            if (auto v = ad.read(n.tlPath)) baseTl[n.policy] = *v;
                     }
                 };
-                bool hiMissing = false;
-                for (auto& n : uagNodes_)
-                    if (!n.hiPath.empty() && !baseH.count(n.policy)) { hiMissing = true; break; }
-                bool needSeed = base.empty() || baseD.empty() || hiMissing;
+                bool hiMissing = false, tlMissing = false;
+                for (auto& n : uagNodes_) {
+                    if (!n.hiPath.empty() && !baseH.count(n.policy)) hiMissing = true;
+                    if (!n.tlPath.empty() && !baseTl.count(n.policy)) tlMissing = true;
+                }
+                bool needSeed = base.empty() || baseD.empty() || hiMissing || tlMissing;
                 if (needSeed) seed();   // 补档与恢复是顺序关系，不是互斥（depth 案教训）
                 if (dirty) {
                     std::string rec = "CRASH-RECOVERY uag->";
@@ -488,16 +497,23 @@ public:
                                 ad.write(n.hiPath, std::to_string(it3->second), false, &d) == WriteOutcome::Ok)
                                 rec += n.policy + ".hi=" + std::to_string(it3->second) + " ";
                         }
+                        if (!n.tlPath.empty()) {
+                            auto it4 = baseTl.find(n.policy);
+                            if (it4 != baseTl.end() &&
+                                ad.write(n.tlPath, it4->second, false, &d) == WriteOutcome::Ok)
+                                rec += n.policy + ".tl=" + it4->second + " ";
+                        }
                     }
-                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.dirty = false;
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.baseTl = baseTl; cs.dirty = false;
                     save_cpu_state(ad, cs);
                     r_.detail += " | " + rec;
                 } else if (needSeed) {
-                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.dirty = false;
+                    CpuState cs; cs.base = base; cs.baseDown = baseD; cs.baseHi = baseH; cs.baseTl = baseTl; cs.dirty = false;
                     save_cpu_state(ad, cs);
                     r_.detail += " uag-seed(up+down)";
                 }
                 hiBase_ = baseH;
+                tlBase_ = baseTl;
                 uagBase_ = base;
                 downBase_ = baseD;
                 r_.detail += " uagNodes=" + std::to_string(uagNodes_.size());
@@ -565,8 +581,26 @@ public:
             runGroup("up", &UagNode::upPath, eff.cpu.uagUpRateUs, uagBase_);
             runGroup("dn", &UagNode::downPath, eff.cpu.uagDownRateUs, downBase_);
             runGroup("hi", &UagNode::hiPath, eff.cpu.uagHispeedLoad, hiBase_);
+            auto runGroupStr = [&](const char* tag, const std::string UagNode::*fld,
+                                   int effVal, const std::map<std::string,std::string>& baseM) {
+                for (auto& n : uagNodes_) {
+                    const std::string& path = n.*fld;
+                    if (path.empty()) continue;
+                    auto bit = baseM.find(n.policy);
+                    if (effVal < 0 && bit == baseM.end()) continue;   // 无基线不写
+                    std::string baseStr = bit != baseM.end() ? bit->second : std::string();
+                    std::string target = (effVal >= 0) ? tl_set_first(baseStr, effVal) : baseStr;
+                    if (target.empty()) continue;
+                    std::string dd;
+                    ad.write(path, target, dryRun, &dd);
+                    r.detail += std::string(" | ") + tag + ":" + n.policy + "=" + target;
+                }
+            };
+            // target_loads：实测非独占（Oplus 熄屏改写频率点 + 首段写入被覆盖），**彻底断开**：
+            // 连基线与回写都不做，避免与 Oplus 争用；通路与档案结构保留备用。
+            // runGroupStr("tl", &UagNode::tlPath, eff.cpu.uagTargetLoadsFirst, tlBase_);
             if (!dryRun) {
-                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_; cs.baseHi = hiBase_;
+                CpuState cs; cs.base = uagBase_; cs.baseDown = downBase_; cs.baseHi = hiBase_; cs.baseTl = tlBase_;
                 cs.dirty = offAny; cs.phase = "COMMIT";
                 save_cpu_state(ad, cs);
             }
@@ -590,8 +624,9 @@ public:
     }
 
 private:
-    struct UagNode { std::string policy, upPath, downPath, hiPath; };
-    struct CpuState { std::map<std::string,int> base, baseDown, baseHi; bool dirty = false; std::string phase; };
+    struct UagNode { std::string policy, upPath, downPath, hiPath, tlPath; };
+    struct CpuState { std::map<std::string,int> base, baseDown, baseHi;
+        std::map<std::string,std::string> baseTl; bool dirty = false; std::string phase; };
 
     std::optional<CpuState> read_cpu_state(SysfsAdapter& ad) const {
         if (stateFile_.empty()) return std::nullopt;
@@ -609,6 +644,7 @@ private:
             else if (k.rfind("UP:", 0) == 0) s.base[k.substr(3)] = atoi(v.c_str());
             else if (k.rfind("DOWN:", 0) == 0) s.baseDown[k.substr(5)] = atoi(v.c_str());
             else if (k.rfind("HI:", 0) == 0) s.baseHi[k.substr(3)] = atoi(v.c_str());
+            else if (k.rfind("TL:", 0) == 0) s.baseTl[k.substr(3)] = v;
         }
         return s;
     }
@@ -620,6 +656,7 @@ private:
         for (auto& kv : cs.base) os << "UP:" << kv.first << "=" << kv.second << "\n";
         for (auto& kv : cs.baseDown) os << "DOWN:" << kv.first << "=" << kv.second << "\n";
         for (auto& kv : cs.baseHi) os << "HI:" << kv.first << "=" << kv.second << "\n";
+        for (auto& kv : cs.baseTl) os << "TL:" << kv.first << "=" << kv.second << "\n";
         std::string d;
         return ad.write(stateFile_, os.str(), false, &d);   // 档案永远真写
     }
@@ -631,6 +668,7 @@ private:
     int maxHint_ = -1;
     std::vector<UagNode> uagNodes_;
     std::map<std::string,int> hiBase_;
+    std::map<std::string,std::string> tlBase_;
     std::map<std::string,int> uagBase_;
     std::map<std::string,int> downBase_;
 };

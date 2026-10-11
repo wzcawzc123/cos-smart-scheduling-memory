@@ -82,6 +82,7 @@ int read_max_temp(const std::string& thermalRoot);
 std::string gpu_json(const std::string& kgslRoot);
 void read_battery_state(const std::string& psRoot, int& pct, bool& charging);
 bool fps_sentry_trigger(const int* jankPctHist, int n, int threshPct);
+std::string tl_set_first(const std::string& base, int first);
 int next_thermal_level(int prev, int t, int t1, int t2, int hyst, int trendDeg = 0);
 void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, std::atomic<bool>& run);
 

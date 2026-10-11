@@ -18,7 +18,8 @@ namespace uro {
 // 单场景策略模板（§3.3 表）
 struct ScenarioTactics {
     int gpuIdleTimer = 0;
-    int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）   // GPU idle_timer（0=不动；v0.22 GpuController）
+    int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
+    int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）   // GPU idle_timer（0=不动；v0.22 GpuController）
     bool reclaimEnabled = true;
     bool freezeEnabled = false;
     int  maxKillPerRound = 0;
@@ -305,6 +306,10 @@ private:
             case Scenario::POWER_SAVE: t.uagHispeedLoad = 95; break;
             default:                   t.uagHispeedLoad = -1; break;
         }
+        // uag target_loads：**实测回滚**（v0.26）——非独占节点：Oplus 熄屏时改写频率点段
+        // （2112000 -> 1056000），URO 写入被覆盖且有打架风险。默认一律不写（-1）；
+        // 保留控制器通路与档案结构（Oplus 行为若变化可重新启用）。
+        t.uagTargetLoadsFirst = -1;
         return t;
     }
 

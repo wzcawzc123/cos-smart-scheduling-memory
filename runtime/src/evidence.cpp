@@ -88,6 +88,14 @@ std::string gpu_json(const std::string& kgslRoot) {
 }
 
 // L4 帧率哨兵：最近 n 个窗口 jank 率全部 > 阈值 → 触发（观测告警，不自动改策略）
+// uag target_loads 多段改写：只改首段，保留频率点段（"80 2112000:95" -> "70 2112000:95"）
+std::string tl_set_first(const std::string& base, int first) {
+    if (base.empty() || first < 0) return base;
+    size_t sp = base.find(' ');
+    if (sp == std::string::npos) return std::to_string(first);
+    return std::to_string(first) + base.substr(sp);
+}
+
 bool fps_sentry_trigger(const int* jankPctHist, int n, int threshPct) {
     if (n <= 0) return false;
     for (int i = 0; i < n; ++i)
