@@ -161,7 +161,9 @@ const batch=[
   'echo @@SEG:pw@@;tail -1 '+L+'/log/power.jsonl 2>/dev/null',
   'echo @@SEG:th@@;tail -1 '+L+'/log/thermal.jsonl 2>/dev/null',
   'echo @@SEG:fps@@;tail -3 '+L+'/log/fps.jsonl 2>/dev/null',
-  'echo @@SEG:thr@@;tail -1 '+L+'/log/thread.jsonl 2>/dev/null'
+  'echo @@SEG:thr@@;tail -1 '+L+'/log/thread.jsonl 2>/dev/null',
+  'echo @@SEG:gpu@@;tail -1 '+L+'/log/gpu.jsonl 2>/dev/null',
+  'echo @@SEG:hi@@;cat /sys/devices/system/cpu/cpufreq/policy0/uag/hispeed_load 2>/dev/null'
 ].join(';');
 
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -237,6 +239,19 @@ async function refresh(){
         '<div class="row"><span class="name">CPU 热点</span><span class="val">'+esc(top)+'</span></div>'+
         '<div class="row"><span class="name">帧率(60s窗)</span><span class="val">'+esc(fpsLine)+'</span></div>'+
         '<div class="row"><span class="name">AppOpt</span><span class="val">'+esc(rules)+'</span></div>';
+      // v0.27：GPU 观测 + CPU 调参（hispeed_load）两行
+      try{
+        const gp=JSON.parse(G(seg.gpu)||'{}');
+        const hi=(G(seg.hi)||'').trim();
+        let sentryTag='';
+        if(lf&&lf.sentry) sentryTag=' · <b style="color:#c0392b">⚠jank高</b>';
+        document.getElementById('evid').innerHTML +=
+          '<div class="row"><span class="name">GPU</span><span class="val">'+
+            esc((gp.gpuBusy!=null?gp.gpuBusy+'%':'?')+' · '+(gp.gpuClkMhz!=null?gp.gpuClkMhz+'MHz':'?')+
+            ' · idle '+(gp.gpuIdleTimer!=null?gp.gpuIdleTimer:'?'))+sentryTag+'</span></div>'+
+          '<div class="row"><span class="name">CPU 调参</span><span class="val">'+
+            esc('hispeed_load '+(hi||'?')+' · up 2500us')+'</span></div>';
+      }catch(e){}
     }catch(e){}
   }catch(e){fail('读取失败: '+e)}
 }

@@ -3,6 +3,13 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.27.0（versionCode 2700）— 看板补齐 GPU/调参两行
+- Evidence 采样卡新增两行：**GPU**（busy% · MHz · idle_timer，含帧率哨兵 `⚠jank高` 标记）
+  与 **CPU 调参**（hispeed_load 当前值 · up_rate）
+- batch 加 `gpu`（tail gpu.jsonl）与 `hi`（读 uag hispeed_load）两段；node --check 通过
+- 真机数据通路验证：`gpuBusy:13/220MHz/idle80`、`hispeed_load=90`
+- 至此看板覆盖：档位/总闸/时间线/写入证据 + Evidence 六行（电量/热点/帧率/AppOpt/GPU/调参）
+
 ## v0.26.0（versionCode 2600）— uag 第二项实验（负结果：target_loads 非独占，主动断开）+ 原子部署
 - **target_loads 实验与回滚（诚实负结果）**：
   · 实现了完整通路（多段保留纯函数 `tl_set_first`、字符串档案 `TL:`、runGroupStr）
