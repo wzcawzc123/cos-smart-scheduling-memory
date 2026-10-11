@@ -41,6 +41,7 @@ run_one() {
 run_one bridge
 run_one m2
 run_one m3
+run_one tactics
 
 echo "=================================="
 if [ "$FAILED" -eq 0 ]; then

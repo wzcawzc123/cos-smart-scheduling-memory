@@ -12,6 +12,8 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <map>
+#include <cstdlib>
 
 namespace uro {
 
@@ -52,6 +54,37 @@ public:
     // App 画像（第2步·CT 遗产）：每行 "通配符包名|down|up"（-1=跟随档位；# 注释；
     // 与 game_list 同款生命周期——每次现读、热改热生效）。优先级：画像 > 档位 > 基线。
     void set_app_profiles_path(std::string p) { profilePath_ = std::move(p); }
+
+    // ---- 参数外置（v0.33 第1批）：外部场景配方覆盖 ----
+    // 空 map = 完全走内置默认（向后兼容）。只覆盖配置里出现的字段。
+    void set_tactics_override(std::map<Scenario, std::map<std::string, std::string>> m) {
+        ovr_ = std::move(m);
+    }
+    size_t tactics_override_scenarios() const { return ovr_.size(); }
+
+    void apply_tactics_override(ScenarioTactics& t, Scenario s) const {
+        auto it = ovr_.find(s);
+        if (it == ovr_.end()) return;
+        for (const auto& kv : it->second) {
+            const std::string& k = kv.first;
+            const std::string& v = kv.second;
+            long n = std::atol(v.c_str());
+            if (k == "reclaim")            t.reclaimEnabled = (n != 0);
+            else if (k == "freeze")        t.freezeEnabled = (n != 0);
+            else if (k == "maxKill")       t.maxKillPerRound = (int)n;
+            else if (k == "depth")         t.depth = v;
+            else if (k == "cooldown")      t.cooldownSec = (int)n;
+            else if (k == "uagUp")         t.uagUpRateUs = (int)n;
+            else if (k == "uagDown")       t.uagDownRateUs = (int)n;
+            else if (k == "uagHi")         t.uagHispeedLoad = (int)n;
+            else if (k == "uagTl")         t.uagTargetLoadsFirst = (int)n;
+            else if (k == "gpuIdle")       t.gpuIdleTimer = (int)n;
+            else if (k == "keepAdj")       t.keepAliveAdj = (int)n;
+            else if (k == "cpuClamp")      t.cpuClamp = (n != 0);
+            else if (k == "maxFreqK")      t.maxFreqKhz = (int)n;
+            else if (k == "handover")      t.handover = (n != 0);
+        }
+    }
 
     // ---- App 画像引擎 ----
     static bool glob_match(const char* p, const char* s) {
@@ -321,6 +354,8 @@ private:
             case Scenario::MEMORY_PRESSURE: t.keepAliveAdj = 300; break;   // 多回收
             default:                        t.keepAliveAdj = -1;    break;  // GAME 不看/不动
         }
+        // v0.33 参数外置：外部配方覆盖（未配置的字段 = 保持以上内置默认）
+        apply_tactics_override(t, s);
         return t;
     }
 
@@ -342,6 +377,9 @@ private:
         }
         return false;
     }
+
+    // ---- 场景配方覆盖（v0.33 参数外置）：场景 → 字段名 → 原样值 ----
+    std::map<Scenario, std::map<std::string, std::string>> ovr_;
 
     std::string gameListPath_;
     bool thermalCapped_ = false;

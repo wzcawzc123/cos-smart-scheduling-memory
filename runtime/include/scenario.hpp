@@ -10,6 +10,7 @@
 //
 // 版本沿革：v0.10 及以前为场景模型（DAILY/POWERSAVE/…），v0.11 收敛为四档。
 #pragma once
+#include <cstdint>
 #include <string>
 
 namespace uro {

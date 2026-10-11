@@ -5,6 +5,7 @@
 #include "drivers.hpp"
 #include "controller.hpp"
 #include "policy_manager.hpp"
+#include "tactics_conf.hpp"
 #include <csignal>
 #include <cstring>
 #include <fstream>
@@ -200,6 +201,30 @@ int main(int argc, char** argv) {
     pm.set_game_list_path(std::string(logdir) + "/game_apps.txt");
     pm.set_app_profiles_path(std::string(logdir) + "/app_profiles.txt");  // App 画像（第2步）
 
+    // ---- v0.33 参数外置：场景配方文件（mtime 热重载；整份接受或整份拒绝，spec §4/§5）----
+    // 文件不存在 → 静默走内置默认（向后兼容）；解析失败 → 保持上次成功值并记录。
+    const std::string kTacticsConf = "/sdcard/Android/UnifiedRootOptimizer/uro_tactics.conf";
+    long lastTacticsMt = -2;
+    auto reload_tactics = [&](bool force) {
+        struct stat stt{};
+        long mt = (stat(kTacticsConf.c_str(), &stt) == 0) ? (long)stt.st_mtime : -1;
+        if (!force && mt == lastTacticsMt) return;
+        lastTacticsMt = mt;
+        if (mt < 0) { pm.set_tactics_override({}); return; }
+        std::ifstream tf(kTacticsConf);
+        std::string text((std::istreambuf_iterator<char>(tf)), std::istreambuf_iterator<char>());
+        TacticsConf tc = parse_tactics_conf(text);
+        if (tc.ok) {
+            pm.set_tactics_override(tc.byScenario);
+            elog.line("TacticsConf OK applied=" + std::to_string(tc.applied) +
+                      " scenarios=" + std::to_string(tc.byScenario.size()));
+        } else {
+            elog.line("TacticsConf REJECT line=" + std::to_string(tc.errorLine) +
+                      " err=" + tc.error + " (保持上次成功值/内置默认)");
+        }
+    };
+    reload_tactics(true);
+
     std::thread t1(fg_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t5(focus_driver, std::ref(q), p, fg, std::ref(g_run));
     // v0.11 四档自治：mode_config_driver 停用——不再读系统 mode.txt（省电/高性能设置
@@ -357,6 +382,7 @@ int main(int argc, char** argv) {
 
     while (g_run) {
         if (!q.pop(e, 500)) {
+            reload_tactics(false);   // v0.33：配方文件 mtime 变化才重解析（stat 一次/500ms，可忽略）
             // 空闲 tick：租约到期判断 + Touch 档位回落重判（读时钟，非写入轮询；§4.4 TTL 回落）
             if (pm.lease_expired(now_ms())) {
                 pm.set_pressure_time(0);            // 压力租约过期 → 清压力态
