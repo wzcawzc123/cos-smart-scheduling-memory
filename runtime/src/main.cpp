@@ -212,7 +212,7 @@ int main(int argc, char** argv) {
                    "/data/adb/modules/AppOpt/applist.conf",
                    std::string(logdir) + "/game_apps.txt",
                    "/dev/cpuset/AppOpt", std::ref(g_run));   // Phase-1: Thread Evidence
-    std::thread t8(evidence_driver, std::string(logdir), fg, std::ref(g_run));  // v0.17 Evidence 扩展
+    std::thread t8(evidence_driver, std::string(logdir), fg, std::ref(q), std::ref(g_run));  // v0.17 Evidence 扩展
 
     Event e;
     EffectivePolicy lastApplied;
@@ -272,6 +272,9 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (dec.thermalCapped)
+            elog.line(std::string(ts) + " THERMAL-CAPPED scenario=" + scenario_name(dec.scenario) +
+                      " level=" + std::to_string(st.thermalLevel) + " fg=" + st.foregroundPackage);
         if (dec.tactics.handover) {
             // §5.5 全量让权的准确语义：
             //   CPU/GPU → 撤销我方全部上限（maxFreq=-1 本就无约束 → 零写入，不与游戏助手打架）

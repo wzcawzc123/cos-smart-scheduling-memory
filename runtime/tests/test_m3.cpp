@@ -327,5 +327,29 @@ int main() {
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);
     std::string cmd = "rm -rf '" + dir + "'";
     system(cmd.c_str());
-    return fail == 0 ? 0 : 1;
+        // ---- [thermal] T-OBS→干预：夹档 ----
+    {
+        using namespace uro;
+        PolicyManager pm2;
+        Event e{EventType::TouchChanged, 1000, 1, "t", ""};
+        GlobalState st2; st2.screenOn = true; st2.foregroundPackage = "com.x";
+        // 无热：触摸 -> PERFORMANCE
+        auto d1 = pm2.decide(st2, e, 1000);
+        // 级1：PERFORMANCE 被夹到 BALANCE、why 含 thermal
+        st2.thermalLevel = 1;
+        auto d2 = pm2.decide(st2, e, 2000);
+        CHECK(d2.scenario == Scenario::BALANCE, "L1夹PERF->BALANCE");
+        CHECK(d2.why.find("thermal") != std::string::npos, "why标注thermal");
+        // 级2：POWER_SAVE
+        st2.thermalLevel = 2;
+        auto d3 = pm2.decide(st2, e, 3000);
+        CHECK(d3.scenario == Scenario::POWER_SAVE, "L2夹->POWER_SAVE");
+        // 解除：级0 恢复
+        st2.thermalLevel = 0;
+        auto d4 = pm2.decide(st2, e, 4000);
+        CHECK(d4.scenario == Scenario::PERFORMANCE, "解除恢复PERF");
+        std::printf("[thermal] ok (夹档L1/L2/解除/why)\n");
+    }
+
+return fail == 0 ? 0 : 1;
 }

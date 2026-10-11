@@ -14,6 +14,7 @@ struct GlobalState {
     float psiMem10      = 0.f;
     long  memAvailMb    = -1;
     std::string mode    = "(none)";   // 情景模式
+    int     thermalLevel = 0;   // 0=正常 1=高温(≤BALANCE) 2=过热(≤POWER_SAVE)（T-OBS→干预）
     uint64_t generation = 0;
     uint64_t ts_ms      = 0;
 };
@@ -30,7 +31,16 @@ public:
             case EventType::ScreenChanged:
                 if (st.screenOn != (e.payload == "on")) { st.screenOn = (e.payload == "on"); changed = true; }
                 break;
-            case EventType::ChargerChanged:
+                        case EventType::ThermalChanged: {
+                // payload="level:temp"（evidence_driver 边沿推送）
+                int lv = 0;
+                size_t c = e.payload.find(':');
+                if (c != std::string::npos) lv = std::atoi(e.payload.substr(0, c).c_str());
+                if (lv < 0) lv = 0; if (lv > 2) lv = 2;
+                if (lv != st.thermalLevel) { st.thermalLevel = lv; changed = true; }
+                break;
+            }
+case EventType::ChargerChanged:
                 if (st.charging != (e.payload != "Discharging")) { st.charging = (e.payload != "Discharging"); changed = true; }
                 break;
             case EventType::ModeChanged:

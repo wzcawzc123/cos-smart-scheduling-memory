@@ -78,7 +78,9 @@ void thread_evidence_driver(const std::string& logdir, const std::string& appopt
 std::string thermal_json(const std::string& thermalRoot);
 std::string battery_json(const std::string& psRoot);
 bool parse_gfxinfo(const std::string& text, long& total, long& janky);
-void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool>& run);
+int read_max_temp(const std::string& thermalRoot);
+int next_thermal_level(int prev, int t, int t1, int t2, int hyst);
+void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, std::atomic<bool>& run);
 
 uint64_t now_ms();
 

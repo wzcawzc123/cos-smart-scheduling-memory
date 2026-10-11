@@ -368,7 +368,30 @@ static void ev_hb(const std::string& logdir, const char* stage) {
     f << stage << " " << now_ms() << "\n";
 }
 
-void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool>& run) {
+// Thermal 阈值（uro.conf 热读；默认 T1=78 T2=85 迟滞6，ENABLE=0 关）
+static void read_thermal_cfg(int& en, int& t1, int& t2) {
+    en = 1; t1 = 78; t2 = 85;
+    auto trm = [](std::string t) {
+        auto a = t.find_first_not_of(" \t\r\n");
+        if (a == std::string::npos) return std::string();
+        auto b = t.find_last_not_of(" \t\r\n");
+        return t.substr(a, b - a + 1);
+    };
+    std::ifstream f("/sdcard/Android/UnifiedRootOptimizer/uro.conf");
+    if (!f.is_open()) return;
+    std::string line;
+    while (std::getline(f, line)) {
+        auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string k = trm(line.substr(0, eq));
+        std::string v = trm(line.substr(eq + 1));
+        if (k == "THERMAL_ENABLE") en = atoi(v.c_str());
+        else if (k == "THERMAL_T1") t1 = atoi(v.c_str());
+        else if (k == "THERMAL_T2") t2 = atoi(v.c_str());
+    }
+}
+
+void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, std::atomic<bool>& run) {
     std::string lastPkg;
     long lastTotal = -1, lastJanky = 0;
     while (run) {
@@ -380,6 +403,25 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, std::atomic<bool
             std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
             lf << "{\"ts\":" << now_ms() << "," << tj << "," << bj << "}\n";
             ev_hb(logdir, "thermal-done");
+            // Thermal Detector：温度→热级（迟滞）→ 边沿推 ThermalChanged（level:temp）
+            {
+                int en, t1, t2;
+                read_thermal_cfg(en, t1, t2);
+                static int tLevel = 0;
+                if (en == 0) {
+                    if (tLevel != 0) { tLevel = 0;
+                        q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal", "0:" + std::to_string(-1)}); }
+                } else {
+                    int t = read_max_temp("/sys/class/thermal");
+                    int nl = next_thermal_level(tLevel, t, t1, t2, 6);
+                    if (nl != tLevel) {
+                        tLevel = nl;
+                        q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal",
+                                     std::to_string(nl) + ":" + std::to_string(t)});
+                        fprintf(stderr, "[URO-thermal] level=%d temp=%d (T1=%d T2=%d)\n", nl, t, t1, t2);
+                    }
+                }
+            }
         }
         {
             std::string pkg = fg->get();

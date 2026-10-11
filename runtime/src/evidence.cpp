@@ -61,6 +61,37 @@ std::string battery_json(const std::string& psRoot) {
     return o.str();
 }
 
+// Thermal Detector（T-OBS→干预）：最高热点温度（无数据返回 -1）
+int read_max_temp(const std::string& thermalRoot) {
+    int best = -1;
+    DIR* d = opendir(thermalRoot.c_str());
+    if (!d) return -1;
+    struct dirent* en;
+    while ((en = readdir(d)) != nullptr) {
+        std::string name = en->d_name;
+        if (name.rfind("thermal_zone", 0) != 0) continue;
+        std::ifstream fv(thermalRoot + "/" + name + "/temp");
+        if (!fv.is_open()) continue;
+        long mc = 0; fv >> mc;
+        int c = (int)(mc / 1000);
+        if (c > best) best = c;
+    }
+    closedir(d);
+    return best;
+}
+
+// 热级状态机（带迟滞）：prev 级、当前温度 t、阈值 t1/t2、迟滞 hyst
+// 进：t>=t1 → 1、t>=t2 → 2；出：1→0 需 t<=t1-hyst、2→1 需 t<=t2-hyst（逐级回落）
+int next_thermal_level(int prev, int t, int t1, int t2, int hyst) {
+    if (t < 0) return prev;                       // 无传感器数据保持原级
+    if (t >= t2) return 2;
+    if (t >= t1) return prev >= 1 ? prev : 1;      // 已在1/2不降级（热区内保持）
+    // 低于 t1：逐级回落
+    if (prev >= 2 && t <= t2 - hyst) return 1;
+    if (prev >= 1 && t <= t1 - hyst) return 0;
+    return prev;
+}
+
 // dumpsys gfxinfo 输出解析：Total/Janky 两行
 bool parse_gfxinfo(const std::string& text, long& total, long& janky) {
     auto a = text.find("Total frames rendered:");
