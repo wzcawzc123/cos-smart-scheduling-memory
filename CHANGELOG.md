@@ -3,6 +3,14 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.24.0（versionCode 2400）— L4 完成：温度趋势预判 + 帧率哨兵
+- **温度趋势预判**：`next_thermal_level` 加 `trendDeg` 参数——接近阈值（t1-6）且 5min 升温
+  >=4°C → 视作已达 t1 提前一级（防撞温度墙）；driver 侧 5 采样 ring 算趋势
+- **帧率哨兵**（观测优先，不自动改策略）：`fps_sentry_trigger`（连续 3 窗口 jank>15%）→
+  fps.jsonl 行加 `"sentry":1` 标记（供看板/后续分析）
+- 单测 +5（[l4-sentry] 趋势提前/无趋势不提前/即时阈值/哨兵触发/中断不触发），194 全过
+- **L4 反馈闭环三环齐**：电量守卫（回喂夹档）+ 温度趋势（预测）+ 帧率哨兵（观测）
+
 ## v0.23.0（versionCode 2300）— L4 反馈闭环第一环：电量守卫（Evidence→State→Policy）
 - **数据回喂链**：`read_battery_state` → evidence_driver 60s 检测（pct 变≥2 或充电态变）→
   推 `ChargerChanged`（payload "Charging:56" 扩展格式，兼容旧纯字符串）→ `GlobalState.batteryPct`

@@ -560,6 +560,21 @@ int main() {
         std::printf("[gpu] ok (busy/clk/idle_timer)\n");
     }
 
+    // ---- 20. [l4-sentry] 温度趋势 + 帧率哨兵 ----
+    {
+        using namespace uro;
+        // 趋势预判：t1-5 且升温 5° → 提前进 1
+        CHECK(next_thermal_level(0, 73, 78, 85, 6, 5) == 1, "趋势预判提前进1");
+        CHECK(next_thermal_level(0, 73, 78, 85, 6, 0) == 0, "无趋势不提前");
+        CHECK(next_thermal_level(0, 79, 78, 85, 6, 0) == 1, "即时阈值仍生效");
+        // 帧率哨兵：3 连 >15
+        int h1[3] = {18, 20, 16};
+        int h2[3] = {18, 9, 16};
+        CHECK(fps_sentry_trigger(h1, 3, 15), "3连jank触发哨兵");
+        CHECK(!fps_sentry_trigger(h2, 3, 15), "中断不触发");
+        std::printf("[l4-sentry] ok (趋势预判/哨兵)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

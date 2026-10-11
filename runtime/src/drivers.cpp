@@ -429,7 +429,13 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
                         q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal", "0:" + std::to_string(-1)}); }
                 } else {
                     int t = read_max_temp("/sys/class/thermal");
-                    int nl = next_thermal_level(tLevel, t, t1, t2, 6);
+                    static int th5[5] = {0, 0, 0, 0, 0};
+                    static int thIdx = 0;
+                    int trend = 0;
+                    if (thIdx >= 5 && th5[thIdx % 5] > 0 && t > 0)
+                        trend = t - th5[thIdx % 5];          // 5 分钟前 → 现的升温幅度
+                    th5[thIdx % 5] = t; ++thIdx;
+                    int nl = next_thermal_level(tLevel, t, t1, t2, 6, trend);
                     if (nl != tLevel) {
                         tLevel = nl;
                         q.push(Event{EventType::ThermalChanged, now_ms(), 0, "thermal",
@@ -464,7 +470,16 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
                             long dt = total - lastTotal, dj = janky - lastJanky;
                             std::ofstream lf(logdir + "/fps.jsonl", std::ios::app);
                             lf << "{\"ts\":" << now_ms() << ",\"pkg\":\"" << pkg
-                               << "\",\"frames\":" << dt << ",\"janky\":" << dj << "}\n";
+                               << "\",\"frames\":" << dt << ",\"janky\":" << dj;
+                            {
+                                static int jhist[3] = {0, 0, 0};
+                                static int jhIdx = 0;
+                                jhist[jhIdx % 3] = (dt > 0) ? (int)(dj * 100 / dt) : 0;
+                                ++jhIdx;
+                                if (jhIdx >= 3 && fps_sentry_trigger(jhist, 3, 15))
+                                    lf << ",\"sentry\":1";
+                            }
+                            lf << "}\n";
                             lastTotal = total; lastJanky = janky;
                         }
                     }

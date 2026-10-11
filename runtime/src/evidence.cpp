@@ -87,6 +87,14 @@ std::string gpu_json(const std::string& kgslRoot) {
     return o.str();
 }
 
+// L4 帧率哨兵：最近 n 个窗口 jank 率全部 > 阈值 → 触发（观测告警，不自动改策略）
+bool fps_sentry_trigger(const int* jankPctHist, int n, int threshPct) {
+    if (n <= 0) return false;
+    for (int i = 0; i < n; ++i)
+        if (jankPctHist[i] <= threshPct) return false;
+    return true;
+}
+
 int read_max_temp(const std::string& thermalRoot) {
     int best = -1;
     DIR* d = opendir(thermalRoot.c_str());
@@ -107,10 +115,13 @@ int read_max_temp(const std::string& thermalRoot) {
 
 // 热级状态机（带迟滞）：prev 级、当前温度 t、阈值 t1/t2、迟滞 hyst
 // 进：t>=t1 → 1、t>=t2 → 2；出：1→0 需 t<=t1-hyst、2→1 需 t<=t2-hyst（逐级回落）
-int next_thermal_level(int prev, int t, int t1, int t2, int hyst) {
+int next_thermal_level(int prev, int t, int t1, int t2, int hyst, int trendDeg) {
     if (t < 0) return prev;                       // 无传感器数据保持原级
-    if (t >= t2) return 2;
-    if (t >= t1) return prev >= 1 ? prev : 1;      // 已在1/2不降级（热区内保持）
+    // L4 趋势预判：接近阈值(t1-6)且近期升温>=4°C → 视作已达 t1（提前一级，防撞温度墙）
+    int teff = t;
+    if (trendDeg >= 4 && t >= t1 - 6 && t < t1) teff = t1;
+    if (teff >= t2) return 2;
+    if (teff >= t1) return prev >= 1 ? prev : 1;   // 已在1/2不降级（热区内保持）
     // 低于 t1：逐级回落
     if (prev >= 2 && t <= t2 - hyst) return 1;
     if (prev >= 1 && t <= t1 - hyst) return 0;
