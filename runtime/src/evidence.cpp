@@ -45,6 +45,17 @@ std::string thermal_json(const std::string& thermalRoot) {
 }
 
 // 电量（M5 分母）：capacity% + 充放电状态 + current_now(mA，作瞬时参考，抖动大不作主指标)
+// L4 电量守卫输入（Evidence 回喂）：pct + 充电态
+void read_battery_state(const std::string& psRoot, int& pct, bool& charging) {
+    pct = -1; charging = false;
+    std::ifstream fc(psRoot + "/battery/capacity");
+    if (fc.is_open()) fc >> pct;
+    std::ifstream fs(psRoot + "/battery/status");
+    std::string st;
+    if (fs.is_open()) fs >> st;
+    charging = (st != "Discharging" && !st.empty());
+}
+
 std::string battery_json(const std::string& psRoot) {
     std::ifstream fc(psRoot + "/battery/capacity");
     if (!fc.is_open()) return "\"pct\":-1";   // 降级：字段保留但 -1

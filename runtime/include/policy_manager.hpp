@@ -38,7 +38,8 @@ struct Decision {
     bool changed = false;         // 相对上次决策实质变化（驱动 apply 边界）
     uint64_t leaseUntilMs = 0;    // 租约到期点；0 = 无租约
     std::string why;              // 触发原因（telemetry）
-    bool thermalCapped = false;   // 本轮被 Thermal 夹档（审计用，v0.20）
+    bool thermalCapped = false;
+    bool powerCapped = false;     // 本轮被电量守卫夹档（审计用，v0.23）   // 本轮被 Thermal 夹档（审计用，v0.20）
 };
 
 class PolicyManager {
@@ -111,6 +112,23 @@ public:
             cand = st.screenOn ? Scenario::BALANCE : Scenario::POWER_SAVE;
         }
 
+        // L4 电量守卫（Evidence 回喂）：低电+放电 → 收性能；充电中不干预；GAME 让权
+        {
+            bool pgOn = true; int pgPct = 20;
+            { std::ifstream f("/sdcard/Android/UnifiedRootOptimizer/uro.conf"); std::string ln;
+              while (std::getline(f, ln)) {
+                  if (ln.rfind("POWER_GUARD=0", 0) == 0) pgOn = false;
+                  else if (ln.rfind("POWER_GUARD_PCT=", 0) == 0) pgPct = std::atoi(ln.c_str() + 16);
+              } }
+            if (pgOn && st.batteryPct >= 0 && !st.charging && st.batteryPct <= pgPct &&
+                cand != Scenario::GAME && cand != Scenario::POWER_SAVE) {
+                Scenario capped = (st.batteryPct <= 10) ? Scenario::POWER_SAVE
+                    : ((cand == Scenario::FAST || cand == Scenario::PERFORMANCE)
+                           ? Scenario::BALANCE : cand);
+                if (capped != cand) { cand = capped; why_ = "power-guard " + why_; pGuardCapped_ = true; }
+            }
+        }
+
         // Thermal 夹档（T-OBS→干预）：热=安全底线（画像/FAST/PERF 都压不过）；
         // GAME 让权不干预（热由系统 thermal-engine 管）；压力态本身已是省电态不动。
         if (st.thermalLevel > 0 && cand != Scenario::GAME &&
@@ -124,6 +142,7 @@ public:
         Decision d;
         d.scenario = cand;
         d.thermalCapped = thermalCapped_; thermalCapped_ = false;
+        d.powerCapped = pGuardCapped_; pGuardCapped_ = false;
         d.tactics = tactics_for(cand, st);
         apply_profile(d, st.foregroundPackage);   // App 画像：通配符覆盖（画像 > 档位 > 基线）
 
@@ -302,6 +321,7 @@ private:
 
     std::string gameListPath_;
     bool thermalCapped_ = false;
+    bool pGuardCapped_ = false;   // 电量守卫夹档边沿
     std::string profilePath_;              // App 画像文件（空 = 无画像）
     std::string why_;
     Scenario lastScenario_ = Scenario::BOOT;

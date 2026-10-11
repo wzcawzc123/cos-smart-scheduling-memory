@@ -273,6 +273,9 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (dec.powerCapped)
+            elog.line(std::string(ts) + " POWER-GUARD-CAPPED scenario=" + scenario_name(dec.scenario) +
+                      " pct=" + std::to_string(st.batteryPct) + " fg=" + st.foregroundPackage);
         if (dec.thermalCapped)
             elog.line(std::string(ts) + " THERMAL-CAPPED scenario=" + scenario_name(dec.scenario) +
                       " level=" + std::to_string(st.thermalLevel) + " fg=" + st.foregroundPackage);

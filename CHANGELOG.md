@@ -3,6 +3,17 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.23.0（versionCode 2300）— L4 反馈闭环第一环：电量守卫（Evidence→State→Policy）
+- **数据回喂链**：`read_battery_state` → evidence_driver 60s 检测（pct 变≥2 或充电态变）→
+  推 `ChargerChanged`（payload "Charging:56" 扩展格式，兼容旧纯字符串）→ `GlobalState.batteryPct`
+- **电量守卫夹档**（decide，热夹档旁）：低电+放电 → 收性能（≤PCT: FAST/PERF→BALANCE、
+  ≤10%: POWER_SAVE）；**充电中不干预**；GAME 让权；`uro.conf` POWER_GUARD/POWER_GUARD_PCT（默认开/20）
+- 审计：`Decision.powerCapped` + events.log `POWER-GUARD-CAPPED` 行（同 thermalCapped 模式）
+- 验证：host [power-guard] 4 条（15%夹/8%PS/充电豁免/why）；真机实证
+  `ChargerChanged src=battery-guard data=Charging:56 [state-changed]`（回喂链路通）+
+  充电中无夹档（设计符合）；放电低电实弹待自然场景
+- L4 后续：温度趋势预判、帧率哨兵（观测优先）
+
 ## v0.22.0（versionCode 2200）— GpuController 实装（idle_timer 档位联动）
 - `GpuPlaceholder` → **真 GpuController**：probe 走 adapter.exists（fake root 友好）、
   apply 写 idle_timer（幂等 lastWrote_、dryRun 支持、0=不定零写入）

@@ -351,5 +351,24 @@ int main() {
         std::printf("[thermal] ok (夹档L1/L2/解除/why)\n");
     }
 
+    // ---- [power-guard] L4 电量守卫（Evidence 回喂）夹档 ----
+    {
+        using namespace uro;
+        PolicyManager pm3;
+        Event e{EventType::TouchChanged, 1000, 1, "t", ""};
+        GlobalState st3; st3.screenOn = true; st3.foregroundPackage = "com.x";
+        st3.batteryPct = 15;
+        auto d2 = pm3.decide(st3, e, 2000);
+        CHECK(d2.scenario == Scenario::BALANCE, "低电15%夹PERF->BALANCE");
+        CHECK(d2.why.find("power-guard") != std::string::npos, "why标注power-guard");
+        st3.batteryPct = 8;
+        auto d3 = pm3.decide(st3, e, 3000);
+        CHECK(d3.scenario == Scenario::POWER_SAVE, "极低8%->POWER_SAVE");
+        st3.batteryPct = 15; st3.charging = true;
+        auto d4 = pm3.decide(st3, e, 4000);
+        CHECK(d4.scenario == Scenario::PERFORMANCE, "充电中不夹");
+        std::printf("[power-guard] ok (15%%夹/8%%PS/充电豁免/why)\n");
+    }
+
 return fail == 0 ? 0 : 1;
 }

@@ -403,6 +403,17 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
             std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
             lf << "{\"ts\":" << now_ms() << "," << tj << "," << bj << "}\n";
             ev_hb(logdir, "thermal-done");
+            // L4 电量守卫输入（Evidence 回喂）：pct 变化>=2 或充电态变化 → 推 ChargerChanged
+            {
+                static int lastPct = -1; static int lastChg = -1;
+                int pct = -1; bool chg = false;
+                read_battery_state("/sys/class/power_supply", pct, chg);
+                if (pct >= 0 && (lastPct < 0 || abs(pct - lastPct) >= 2 || (int)chg != lastChg)) {
+                    lastPct = pct; lastChg = (int)chg;
+                    q.push(Event{EventType::ChargerChanged, now_ms(), 0, "battery-guard",
+                                 (chg ? std::string("Charging") : std::string("Discharging")) + ":" + std::to_string(pct)});
+                }
+            }
             // GPU 观测（v0.21，只读；idle_timer 干预待 GpuController 实装）
             {
                 std::ofstream gf(logdir + "/gpu.jsonl", std::ios::app);

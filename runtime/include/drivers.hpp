@@ -80,6 +80,7 @@ std::string battery_json(const std::string& psRoot);
 bool parse_gfxinfo(const std::string& text, long& total, long& janky);
 int read_max_temp(const std::string& thermalRoot);
 std::string gpu_json(const std::string& kgslRoot);
+void read_battery_state(const std::string& psRoot, int& pct, bool& charging);
 int next_thermal_level(int prev, int t, int t1, int t2, int hyst);
 void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, std::atomic<bool>& run);
 

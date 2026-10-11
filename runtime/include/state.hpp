@@ -14,6 +14,7 @@ struct GlobalState {
     float psiMem10      = 0.f;
     long  memAvailMb    = -1;
     std::string mode    = "(none)";   // 情景模式
+    int     batteryPct = -1;     // L4 电量守卫输入（-1=未采）
     int     thermalLevel = 0;   // 0=正常 1=高温(≤BALANCE) 2=过热(≤POWER_SAVE)（T-OBS→干预）
     uint64_t generation = 0;
     uint64_t ts_ms      = 0;
@@ -40,9 +41,17 @@ public:
                 if (lv != st.thermalLevel) { st.thermalLevel = lv; changed = true; }
                 break;
             }
-case EventType::ChargerChanged:
-                if (st.charging != (e.payload != "Discharging")) { st.charging = (e.payload != "Discharging"); changed = true; }
+case EventType::ChargerChanged: {
+                // payload: "Charging" 或 "Charging:43"（状态[:电量]，兼容旧格式）
+                std::string s = e.payload;
+                int pct = -1;
+                size_t c = s.find(':');
+                if (c != std::string::npos) { pct = std::atoi(s.substr(c + 1).c_str()); s = s.substr(0, c); }
+                bool chg = (s != "Discharging" && !s.empty());
+                if (st.charging != chg) { st.charging = chg; changed = true; }
+                if (pct >= 0 && pct != st.batteryPct) { st.batteryPct = pct; changed = true; }
                 break;
+            }
             case EventType::ModeChanged:
                 if (st.mode != e.payload) { st.mode = e.payload; changed = true; }
                 break;
