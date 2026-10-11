@@ -20,6 +20,9 @@ namespace uro {
 // 单场景策略模板（§3.3 表）
 struct ScenarioTactics {
     int gpuIdleTimer = 0;
+    int gpuPwrMin = -1;      // v0.33 kgsl min_pwrlevel（0=最高频；-1=不干预/回基线）
+    int gpuPwrMax = -1;      // v0.33 kgsl max_pwrlevel（-1=不干预/回基线）
+    int gpuBusSplit = -1;    // v0.33 kgsl bus_split（0/1；-1=不干预/回基线）
     int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
     int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）
     int keepAliveAdj = -1;   // keepAlive.adj 档位（-1=不动）   // GPU idle_timer（0=不动；v0.22 GpuController）
@@ -79,6 +82,9 @@ public:
             else if (k == "uagHi")         t.uagHispeedLoad = (int)n;
             else if (k == "uagTl")         t.uagTargetLoadsFirst = (int)n;
             else if (k == "gpuIdle")       t.gpuIdleTimer = (int)n;
+            else if (k == "gpuMinPwr")     t.gpuPwrMin = (int)n;
+            else if (k == "gpuMaxPwr")     t.gpuPwrMax = (int)n;
+            else if (k == "gpuSplit")      t.gpuBusSplit = (int)n;
             else if (k == "keepAdj")       t.keepAliveAdj = (int)n;
             else if (k == "cpuClamp")      t.cpuClamp = (n != 0);
             else if (k == "maxFreqK")      t.maxFreqKhz = (int)n;

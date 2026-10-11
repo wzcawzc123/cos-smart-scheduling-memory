@@ -687,22 +687,42 @@ class GpuController final : public Controller {
 public:
     const char* name() const override { return "gpu"; }
     CtrlReport probe(SysfsAdapter& ad) override {
-        r_ = ad.exists(kIdle)
-            ? CtrlReport{CtrlState::Active, "idle_timer 行为参数(非上限) 档位联动"}
-            : CtrlReport{CtrlState::Degraded, "idle_timer node absent — gpu skipped"};
+        hasIdle_     = ad.exists(kIdle);
+        hasMinPwr_   = ad.exists(kMinPwr);
+        hasMaxPwr_   = ad.exists(kMaxPwr);
+        hasBusSplit_ = ad.exists(kBusSplit);
+        // 基线快照（回基线用；缺节点则该项永久 skip）
+        if (hasMinPwr_)   { if (auto v = ad.read(kMinPwr))   baseMinPwr_ = atoi(v->c_str()); }
+        if (hasMaxPwr_)   { if (auto v = ad.read(kMaxPwr))   baseMaxPwr_ = atoi(v->c_str()); }
+        if (hasBusSplit_) { if (auto v = ad.read(kBusSplit)) baseBusSplit_ = atoi(v->c_str()); }
+        if (hasIdle_ || hasMinPwr_ || hasMaxPwr_ || hasBusSplit_) {
+            r_ = CtrlReport{CtrlState::Active,
+                            std::string("nodes: idle=") + (hasIdle_ ? "1" : "0") +
+                            " minPwr=" + (hasMinPwr_ ? "1" : "0") +
+                            " maxPwr=" + (hasMaxPwr_ ? "1" : "0") +
+                            " busSplit=" + (hasBusSplit_ ? "1" : "0")};
+        } else {
+            r_ = CtrlReport{CtrlState::Degraded, "no kgsl node — gpu skipped"};
+        }
         return r_;
     }
     void on_event(const Event&, const GlobalState&) override {}
     EffectivePolicy desire() const override { return {}; }
     CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun) override {
         if (r_.state != CtrlState::Active) return r_;
+        std::string d;
+        // ---- idle_timer（v0.22 行为参数：0=不定，不归还）----
         int want = eff.gpu.idleTimer;
-        if (want <= 0) return r_;
-        if (want == lastWrote_) return r_;
-        if (dryRun) { r_.detail = "dry-run idle_timer=" + std::to_string(want); return r_; }
-        ad.write(kIdle, std::to_string(want), false, nullptr);
-        lastWrote_ = want;
-        r_.detail = "idle_timer=" + std::to_string(want);
+        if (want > 0 && want != lastIdle_) {
+            if (!dryRun) ad.write(kIdle, std::to_string(want), false, nullptr);
+            lastIdle_ = want;
+            d += "idle=" + std::to_string(want) + " ";
+        }
+        // ---- v0.33 pwrlevel 边界：>=0 写目标；-1 回基线（仅当我方改过）----
+        applyPwr(ad, kMinPwr,   eff.gpu.pwrMin,   baseMinPwr_,   hasMinPwr_,   wroteMin_,   lastMin_,   dryRun, d, "minPwr");
+        applyPwr(ad, kMaxPwr,   eff.gpu.pwrMax,   baseMaxPwr_,   hasMaxPwr_,   wroteMax_,   lastMax_,   dryRun, d, "maxPwr");
+        applyPwr(ad, kBusSplit, eff.gpu.busSplit, baseBusSplit_, hasBusSplit_, wroteSplit_, lastSplit_, dryRun, d, "busSplit");
+        if (!d.empty()) r_.detail = d;
         return r_;
     }
     CtrlState state() const override { return r_.state; }
@@ -710,9 +730,33 @@ public:
         return std::string("gpu ") + ctrl_state_name(r_.state) + " " + r_.detail;
     }
 private:
-    static constexpr const char* kIdle = "/sys/class/kgsl/kgsl-3d0/idle_timer";
+    // want>=0 → 写目标（同值幂等）；want<0 且我方写过 → 归还基线；want<0 且未写过 → 不动
+    void applyPwr(SysfsAdapter& ad, const char* path, int want, int base, bool exists,
+                  bool& wrote, int& last, bool dryRun, std::string& d, const char* tag) {
+        if (!exists) return;
+        if (want >= 0) {
+            if (wrote && want == last) return;
+            if (dryRun) { d += std::string(tag) + "=dry(" + std::to_string(want) + ") "; return; }
+            ad.write(path, std::to_string(want), false, nullptr);
+            wrote = true; last = want;
+            d += std::string(tag) + "=" + std::to_string(want) + " ";
+        } else if (wrote) {
+            if (dryRun) { d += std::string(tag) + "=dry(base" + std::to_string(base) + ") "; return; }
+            ad.write(path, std::to_string(base), false, nullptr);
+            wrote = false; last = base;
+            d += std::string(tag) + "=base(" + std::to_string(base) + ") ";
+        }
+    }
+    static constexpr const char* kIdle     = "/sys/class/kgsl/kgsl-3d0/idle_timer";
+    static constexpr const char* kMinPwr   = "/sys/class/kgsl/kgsl-3d0/min_pwrlevel";
+    static constexpr const char* kMaxPwr   = "/sys/class/kgsl/kgsl-3d0/max_pwrlevel";
+    static constexpr const char* kBusSplit = "/sys/class/kgsl/kgsl-3d0/bus_split";
     CtrlReport r_{CtrlState::Probing, ""};
-    int lastWrote_ = -1;
+    int lastIdle_ = -1;
+    bool hasIdle_ = false, hasMinPwr_ = false, hasMaxPwr_ = false, hasBusSplit_ = false;
+    int  baseMinPwr_ = -1, baseMaxPwr_ = -1, baseBusSplit_ = -1;
+    bool wroteMin_ = false, wroteMax_ = false, wroteSplit_ = false;
+    int  lastMin_ = -1, lastMax_ = -1, lastSplit_ = -1;
 };
 
 class ThermalPlaceholder final : public Controller {

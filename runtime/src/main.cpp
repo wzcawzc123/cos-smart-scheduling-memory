@@ -276,6 +276,9 @@ int main(int argc, char** argv) {
         base.cpu.uagUpRateUs = dec.tactics.uagUpRateUs;   // 阶段B-CPU：uag 升频延迟
         base.cpu.uagDownRateUs = dec.tactics.uagDownRateUs; // 阶段2：uag 降频迟滞（PERFORMANCE）
         base.gpu.idleTimer = dec.tactics.gpuIdleTimer;   // v0.22 GpuController（行为参数）
+        base.gpu.pwrMin = dec.tactics.gpuPwrMin;         // v0.33 GPU 边界接管
+        base.gpu.pwrMax = dec.tactics.gpuPwrMax;
+        base.gpu.busSplit = dec.tactics.gpuBusSplit;
         base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
         base.cpu.uagTargetLoadsFirst = dec.tactics.uagTargetLoadsFirst;   // v0.26 多段首段
         base.memory.keepAliveAdj = dec.tactics.keepAliveAdj;   // v0.28 KEEPADJ(COSMemory keepAlive.adj)

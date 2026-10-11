@@ -47,6 +47,11 @@ struct GpuPolicy {
     int  maxFreq = -1;
     bool boost = false;
     int  idleTimer = 0;   // GPU 空闲降频延迟 ms（行为参数·非上限；0=不定，GAME 让权）
+    // ---- v0.33 GPU 边界接管（kgsl pwrlevel：0=最高频，num-1=最低频）----
+    // -1 = 不干预；若我方曾写入则回基线（与 CPU 侧 uag 语义一致）
+    int  pwrMin = -1;     // min_pwrlevel：抬保底（游戏不让 GPU 掉到最低档）
+    int  pwrMax = -1;     // max_pwrlevel：压上限（省电档）
+    int  busSplit = -1;   // bus_split：0/1，-1=不干预
 };
 
 struct EffectivePolicy {

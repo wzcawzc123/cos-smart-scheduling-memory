@@ -3,8 +3,20 @@
 // 构建: g++ -std=c++20 -Iinclude src/adapter.cpp src/controllers.cpp src/appopt.cpp src/evidence.cpp tests/test_tactics.cpp -o /tmp/t
 #include "../include/tactics_conf.hpp"
 #include "../include/policy_manager.hpp"
+#include "../include/controller.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <fstream>
+#include <filesystem>
+#include <unistd.h>
+
+namespace fs = std::filesystem;
+
+static void wfile(const std::string& p, const std::string& v) { std::ofstream f(p); f << v; }
+static std::string rfile(const std::string& p) {
+    std::ifstream f(p); std::string s; std::getline(f, s); return s;
+}
 
 using namespace uro;
 
@@ -126,6 +138,54 @@ int main() {
         Decision d = pm.decide(st_with("com.tencent.mm", true),
                                mk(EventType::ConfigChanged, "idle-tick"), 600000);
         CHECK(!d.tactics.handover, "H1 非 GAME 无 handover");
+    }
+
+    // ---------- I. GPU 边界接管（v0.33 第3批：fake sysfs）----------
+    {
+        std::string root = "/tmp/uro_gpu_" + std::to_string((int)getpid());
+        std::string base = root + "/sys/class/kgsl/kgsl-3d0";
+        fs::remove_all(root);
+        fs::create_directories(base);
+        wfile(base + "/idle_timer", "80");
+        wfile(base + "/min_pwrlevel", "7");
+        wfile(base + "/max_pwrlevel", "0");
+        wfile(base + "/bus_split", "1");
+
+        SysfsAdapter ad(root);
+        auto gpu = make_gpu_placeholder();
+        CtrlReport r = gpu->probe(ad);
+        CHECK(r.state == CtrlState::Active, "I1 kgsl 四节点齐 -> Active");
+
+        // 写入边界：游戏档抬保底(min 7->5)、省电档压上限(max 0->4)
+        EffectivePolicy eff;
+        eff.gpu.pwrMin = 5; eff.gpu.pwrMax = 4; eff.gpu.busSplit = 0; eff.gpu.idleTimer = 120;
+        gpu->apply(eff, ad, false);
+        CHECK(rfile(base + "/min_pwrlevel") == "5", "I2 min_pwrlevel 写入 5（抬保底）");
+        CHECK(rfile(base + "/max_pwrlevel") == "4", "I3 max_pwrlevel 写入 4（压上限）");
+        CHECK(rfile(base + "/bus_split") == "0", "I4 bus_split 写入 0");
+        CHECK(rfile(base + "/idle_timer") == "120", "I5 idle_timer 写入 120");
+
+        // 幂等：同值重放不改变内容
+        gpu->apply(eff, ad, false);
+        CHECK(rfile(base + "/min_pwrlevel") == "5", "I6 同值重放幂等");
+
+        // 回基线：-1 = 归还探测时快照的原值
+        EffectivePolicy eff2;
+        gpu->apply(eff2, ad, false);
+        CHECK(rfile(base + "/min_pwrlevel") == "7", "I7 回基线 min_pwrlevel=7");
+        CHECK(rfile(base + "/max_pwrlevel") == "0", "I8 回基线 max_pwrlevel=0");
+        CHECK(rfile(base + "/bus_split") == "1", "I9 回基线 bus_split=1");
+        CHECK(rfile(base + "/idle_timer") == "120", "I10 idle_timer 不回基线（0=不定语义不变）");
+
+        // dry-run 不写盘
+        EffectivePolicy eff3; eff3.gpu.pwrMin = 3;
+        gpu->apply(eff3, ad, true);
+        CHECK(rfile(base + "/min_pwrlevel") == "7", "I11 dry-run 不写盘");
+
+        fs::remove_all(root);
+        SysfsAdapter missing("/nonexistent_fake_root");
+        auto gpu2 = make_gpu_placeholder();
+        CHECK(gpu2->probe(missing).state == CtrlState::Degraded, "I12 无 kgsl 节点 -> Degraded");
     }
 
     std::printf("结果: %d passed, %d failed\n", pass, fail);
