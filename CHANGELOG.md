@@ -3,6 +3,21 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.20.0（versionCode 2000）— Thermal 干预（T-OBS → 真 Detector）
+- 温度进决策：`read_max_temp` + `next_thermal_level`（迟滞 T1/T2/6°C）→ 边沿推
+  `ThermalChanged` → `GlobalState.thermalLevel`（0/1/2）→ **decide 夹档**（不新开写入路径）
+- 夹档语义：L1 压 FAST/PERF→BALANCE、L2→POWER_SAVE；画像也压不过（热=安全底线）；
+  GAME 让权不干预（系统 thermal-engine 管）；`uro.conf` 可配 THERMAL_ENABLE/T1/T2（热读）
+- 审计：`Decision.thermalCapped` + events.log `THERMAL-CAPPED` 行（堵幂等门盲点）
+- 真机触发验收：T1=40 实测 `level=1 temp=47`；fg 切换事件发生而无 FAST 行 =
+  FAST 被夹成 BALANCE 幂等（三重铁证）；阈值已恢复默认 78/85
+- M5-v2 仪器：batterystats 全量 471KB + 摘要入档（Estimated power 基线：
+  CPU 1361mAh/screen 752/总放电 2825mAh）；单测 +4（实跑 190 全过）
+
+## v0.19.1（versionCode 1901）— 看板接 Evidence 四源展示
+- batch 加 pw/th/fps/thr 四段 + Evidence 采样卡（电量/CPU热点/帧率/AppOpt规则）
+- `node --check` 语法 + KSU WebUI 真机截图验收四行真数据；同步设备 module.prop
+
 ## v0.19.0（versionCode 1900）— AppOpt 指挥链②：画像核组生成（URO-GEN 真规则）
 - 画像扩展第四字段 `pattern|down|up|cpuset`（e-core/p-core/hp-core/组名）；
   `reconcile_uro_gen` 60s 对账 → 生成 `<pkg>=<核组>` 写入 URO-GEN 区块
