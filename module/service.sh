@@ -25,6 +25,13 @@ while [ ! -d "$(dirname "$LOGDIR")" ] && [ "$i" -lt 30 ]; do sleep 2; i=$((i+1))
 while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 5; done
 sleep 5
 
+# v0.33 场景配方：首次开机兜底落地（install 阶段 /sdcard 未就绪时补做；不覆盖用户配置）
+TACTICS="/sdcard/Android/UnifiedRootOptimizer/uro_tactics.conf"
+if [ ! -f "$TACTICS" ] && [ -f "$MODDIR/uro_tactics.conf" ]; then
+  cp "$MODDIR/uro_tactics.conf" "$TACTICS" 2>/dev/null && \
+    echo "[$(date '+%F %T')] tactics conf seeded -> $TACTICS" >> "$LOG"
+fi
+
 # 日志滚动 512KB
 if [ -f "$LOG" ]; then
   sz=$(stat -c %s "$LOG" 2>/dev/null || echo 0)

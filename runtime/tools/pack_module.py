@@ -24,6 +24,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(MOD / "service.sh", "service.sh")
     z.write(MOD / "uninstall.sh", "uninstall.sh")
     z.write(MOD / "customize.sh", "customize.sh")   # COSMemory 联动（架构定案 1+2 的"1"）
+    z.write(MOD / "uro_tactics.conf", "uro_tactics.conf")   # v0.33 场景配方外置（首次安装落地，不覆盖用户配置）
     # 调度看板（KSU WebUI）：v0.30.0 起拆成多文件 + assets
     WR = MOD / "webroot"
     for rel in ("index.html", "style.css", "app.js"):

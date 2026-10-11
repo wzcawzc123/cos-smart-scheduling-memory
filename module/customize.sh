@@ -41,3 +41,17 @@ else
         ui_print "! 未找到内嵌 AppOpt 包（打包缺 appopt/），URO 的线程约束源将降级"
     fi
 fi
+
+# ── v0.33 场景配方外置：默认配置落地 ─────────────────────────────────
+# 已存在则保留（尊重用户已改的配置）；失败只提示不 abort（service.sh 开机后还有一次兜底）
+TACTICS="/sdcard/Android/UnifiedRootOptimizer/uro_tactics.conf"
+if [ -f "$TACTICS" ]; then
+    ui_print "- uro_tactics.conf 已存在，保留现有配置"
+else
+    mkdir -p /sdcard/Android/UnifiedRootOptimizer 2>/dev/null
+    if cp "$MODPATH/uro_tactics.conf" "$TACTICS" 2>/dev/null; then
+        ui_print "- uro_tactics.conf 默认配置已落地（改完保存即热生效）"
+    else
+        ui_print "! uro_tactics.conf 落地失败（/sdcard 未就绪？）——开机后自动重试，运行时暂用内置默认"
+    fi
+fi
