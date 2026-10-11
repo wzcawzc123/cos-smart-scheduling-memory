@@ -3,6 +3,23 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.33.0（versionCode 3300）— 参数外置 + 旋钮扩容
+- **参数外置**：场景配方抽到 `/sdcard/Android/UnifiedRootOptimizer/uro_tactics.conf`
+  · INI 风格（`[场景]` + `key=value`），**改完保存即热生效**（mtime 热重载），不再重编译刷模块
+  · 整份接受或整份拒绝：任一行非法 → 整份不生效并记 `events.log`（`TacticsConf REJECT`）
+  · 上机前自检：`sh runtime/tools/check_tactics.sh <文件>`（生产解析器校验，退出码 0 = 合法）
+- **cpuClamp 解封**：配置写 `cpuClamp=1` + `maxFreqK=...` 即启用 CPU 夹频（写入通路早已存在）
+- **GPU 边界**：GpuController 1/6 → 4/6 节点（`min/max_pwrlevel` + `bus_split`），
+  并补上「回基线」语义（此前 `idle_timer` 只有"不写"、没有"归还"）
+- **Thermal 对齐**：`ThermalPlaceholder` → 热状态观察器（status 暴露热级）；
+  新增 `docs/v0.33_对齐全景.md`（逐层对照 + 未启用槽位清单 8 项）
+- **旋钮扩容**：新增 6 个可调旋钮（全部默认关）
+  · CPU：`cpuMinK`（抬下限）、`uagSoftK`（uag 软上限 = OPLUS 预留口）
+  · GPU：`gpuDefPwr` / `gpuMinBw` / `gpuForceClk` / `gpuForceBus`
+  · 勘察结论：QTI `msm_performance` 在本机为空 → 不接入
+- 测试：199 → **288 断言 0 失败**
+- 兼容：所有新字段默认 `-1`/空、配置默认全注释 → **行为与 v0.32.0 逐字段一致**
+
 ## v0.32.0（versionCode 3200）— 内嵌双模块（COSMemory v1.2.2 + AppOpt v2.2.6）
 - **COSMemory 内嵌更新至 v1.2.2**（含 keepAlive.adj 热读修复 —— 使 URO 的 KEEPADJ 档位联动
   从"写入空转"变为真正生效；修复内容见 COSMemory 仓库 314e27c）
