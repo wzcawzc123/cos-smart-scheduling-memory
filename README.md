@@ -2,7 +2,7 @@
 
 > Android Root 系统级资源协同调度框架 —— COSMemory × 线程优化的**统一策略大脑**
 >
-> 一个框架、多个执行器、一个策略大脑。当前 **v0.29.0**：四档自治 + 智能感知 + **AppOpt 指挥链**（GAME 豁免 / 画像核组生成）+ **Thermal 夹档**（含趋势预判）+ **GPU/KEEPADJ 档位联动** + **L4 反馈闭环**（电量守卫 / 温度趋势 / 帧率哨兵）+ uag hispeed_load + Evidence 六源 + 看板（含**画像可视化编辑器**），已实机运行于一加 11（ColorOS 16）。
+> 一个框架、多个执行器、一个策略大脑。当前 **v0.30.0**：四档自治 + 智能感知 + **AppOpt 指挥链**（GAME 豁免 / 画像核组生成）+ **Thermal 夹档**（含趋势预判）+ **GPU/KEEPADJ 档位联动** + **L4 反馈闭环**（电量守卫 / 温度趋势 / 帧率哨兵）+ uag hispeed_load + Evidence 六源 + **五分区看板**（概览 / 趋势图表 / 画像编辑 / 证据 / 关于），已实机运行于一加 11（ColorOS 16）。
 
 ## 它是什么
 
@@ -72,7 +72,10 @@ URO（决策大脑）
 - KSU 模块自启 + 30s 看门狗 + **崩溃残留自动归还基线**（`bridge.state`/`cpu.state` DIRTY 状态机）+ 卸载兜底
 - **telemetry.jsonl**：每次档位/写入一条（`action_id`/gen/scenario/why/**applied**——applied=1 真写入、0 仅切档）
 - **死亡归因** `--attribute <pid>`：证据不足输出 `UNKNOWN`（exit 2），绝不伪造
-- WebUI 看板（模块自带 `webroot/`）：当前档/状态点/总闸/时间线/写入证据/**画像编辑器**——与 COSMemory 面板同源（桥=ksu.ts、样式=奶油粉 Nexus、图标=Solar sprite）；画像卡内联 Vue 3（无外网依赖）
+- WebUI 看板（模块自带 `webroot/`，**v0.30.0 起多文件**：`index.html` + `style.css` + `app.js` + `assets/{vue,uplot}`）：
+  **底栏 5 分区**——概览（当前档 / 指挥链四灯 / 健康三灯 / 迷你 sparkline / 总闸）、趋势（**uPlot 图表**：温度·卡顿率+帧数·内存+PSI·GPU 占用+频率·电量+电流，1h/6h/24h 切换、双 Y 轴）、
+  画像（可视化编辑器）、证据（档位热力色带 / 前台占比 / 核组分布 / uag 参数）、关于（动态版本 · 路径 · 安全边界）
+  与 COSMemory 面板同源（桥=ksu.ts、样式=奶油粉 Nexus + 夜粉深色、图标=Solar sprite）；无外网依赖、无构建步骤
 
 ## 与系统的关系（双向隔离实测）
 

@@ -24,7 +24,13 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(MOD / "service.sh", "service.sh")
     z.write(MOD / "uninstall.sh", "uninstall.sh")
     z.write(MOD / "customize.sh", "customize.sh")   # COSMemory 联动（架构定案 1+2 的"1"）
-    z.write(MOD / "webroot" / "index.html", "webroot/index.html")   # 调度看板（KSU WebUI）
+    # 调度看板（KSU WebUI）：v0.30.0 起拆成多文件 + assets
+    WR = MOD / "webroot"
+    for rel in ("index.html", "style.css", "app.js"):
+        z.write(WR / rel, "webroot/" + rel)
+    for f in sorted((WR / "assets").iterdir()):
+        if f.is_file():
+            z.write(f, "webroot/assets/" + f.name)
     # COSMemory 内嵌包（联动装；缺失仅降级提示不阻断）
     cm = pathlib.Path("/workspace/COSMemory_v1.2.1.zip")
     if cm.exists():
