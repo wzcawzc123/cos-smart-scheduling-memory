@@ -1,5 +1,10 @@
 # 接力任务：URO 画像编辑器（Vue 前端）
 
+> **✅ 已完成（2026-10-11，v0.29.0）** —— 本文不再作为开工单，仅留档。落地与验收见
+> `docs/看板画像编辑器_v0.29.0.md` + CHANGELOG v0.29.0 + commit `ae16c69` + release `v0.29.0`。
+> 离线回归：`node runtime/tools/webui_profile_test.mjs`（29 断言，无需设备）。
+> 下一棒在 CHANGELOG/记忆里：B 组三件（GAME 闭环验收 / A2 复测 / cpuset 矩阵）。
+
 > 建立 2026-10-11 · 前任 Eta 交接 · 项目 UnifiedRootOptimizer（`/workspace/cos-sched-memory`）
 > **新会话开工前请先读本文 + MEMORY.md 的 2026-10-11 各节**
 
