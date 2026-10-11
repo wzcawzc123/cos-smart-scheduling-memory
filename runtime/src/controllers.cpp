@@ -762,20 +762,38 @@ private:
 class ThermalPlaceholder final : public Controller {
 public:
     const char* name() const override { return "thermal"; }
-    CtrlReport probe(SysfsAdapter&) override {
-        // §5.4 T-OBS 观测优先；M2′ 仅占位
-        r_ = {CtrlState::Degraded, "M2′ placeholder — thermal T-OBS deferred"};
+    CtrlReport probe(SysfsAdapter& ad) override {
+        // v0.33 对齐（以代码为准）：热控不在本执行器，而在两处——
+        //   ① 决策：PolicyManager 的 next_thermal_level + thermalCapped
+        //      （超 T1 → 压回 BALANCE；超 T2 → 仍 BALANCE，不叠省电，避免与 thermal-engine 重复惩罚；
+        //        迟滞 8°C、dwell 3min 只升不降防震荡）
+        //   ② 证据：evidence_driver 每 60s 采 thermal.jsonl（top3 热点 + battery，只读）
+        // 参数在 uro.conf：THERMAL_ENABLE / THERMAL_T1 / THERMAL_T2
+        // 本执行器保留为架构落点（§5.4 T-INT 若要输出 CPU/GPU max clamp，落点在此）；
+        // 当前职责 = 把热状态暴露到 registry.status（只读观测，恒 Degraded 不参与求交）。
+        hasZone_ = ad.exists("/sys/class/thermal/thermal_zone0/temp");
+        r_ = {CtrlState::Degraded,
+              hasZone_ ? "observer-only: thermal=Policy(档位回退)+Evidence(thermal.jsonl); conf=uro.conf THERMAL_T1/T2"
+                       : "no thermal zone — observer skipped"};
         return r_;
     }
-    void on_event(const Event&, const GlobalState&) override {}
+    void on_event(const Event& e, const GlobalState& st) override {
+        if (e.type == EventType::ThermalChanged || e.type == EventType::ConfigChanged)
+            level_ = st.thermalLevel;
+    }
     EffectivePolicy desire() const override { return {}; }
     CtrlReport apply(const EffectivePolicy&, SysfsAdapter&, bool) override { return r_; }
     CtrlState state() const override { return r_.state; }
     std::string status() const override {
-        return std::string("thermal ") + ctrl_state_name(r_.state) + " placeholder";
+        static const char* kLv[3] = {"NORMAL", "T1-capped(<=BALANCE)", "T2-capped(<=BALANCE)"};
+        int lv = (level_ < 0 || level_ > 2) ? 0 : level_;
+        return std::string("thermal ") + ctrl_state_name(r_.state) +
+               " level=" + std::to_string(level_) + "(" + kLv[lv] + ") observer-only";
     }
 private:
     CtrlReport r_{CtrlState::Probing, ""};
+    bool hasZone_ = false;
+    int  level_ = 0;
 };
 
 ControllerPtr make_memory_controller(const std::string& policyFile,
