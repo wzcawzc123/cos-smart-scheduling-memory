@@ -3,6 +3,19 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.28.0（versionCode 2800）— KEEPADJ 接入（keepAlive.adj 档位联动）+ hispeed_freq 负结果
+- **KEEPADJ**：复用 `set_reclaim_field("adj")`（COSMemory 引擎零改动）——档位映射
+  PERF/FAST=100（强保前台）、BAL=200（默认）、PS=250（放宽）、压力=300（多回收）、GAME=不动
+- 真机闭环：`adj 200 → 250(熄屏PS) → 200(亮屏)` ✓
+- **关键坑（本轮实弹抓到）**：`materially_different` 字段比较表**不含新加的 keepAliveAdj**
+  → 值变了却不被判定为"实质变化" → **apply 被幂等门跳过**（首版部署 adj 纹丝不动）
+  → 修：比较表补字段。**教训：加 EffectivePolicy 字段必须同步更新 materially_different**
+- **hispeed_freq 判定（负结果）**：写 1700000 → 亮屏保持 → **熄屏被 Oplus 清零(0)** →
+  亮屏被重设(1536000) → **非独占，不接入**。至此 uag 富矿定论：真正安全可用的只有
+  up/down_rate_limit_us 与 hispeed_load 三项
+- 构建插曲：qemu 链接期偶发崩溃（`mremap_chunk` 已知问题），清 .o 重跑成功
+- 单测 199 全过（[keepadj] PERF=100/PS=250）
+
 ## v0.27.0（versionCode 2700）— 看板补齐 GPU/调参两行
 - Evidence 采样卡新增两行：**GPU**（busy% · MHz · idle_timer，含帧率哨兵 `⚠jank高` 标记）
   与 **CPU 调参**（hispeed_load 当前值 · up_rate）

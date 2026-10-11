@@ -253,6 +253,7 @@ int main(int argc, char** argv) {
         base.gpu.idleTimer = dec.tactics.gpuIdleTimer;   // v0.22 GpuController（行为参数）
         base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
         base.cpu.uagTargetLoadsFirst = dec.tactics.uagTargetLoadsFirst;   // v0.26 多段首段
+        base.memory.keepAliveAdj = dec.tactics.keepAliveAdj;   // v0.28 KEEPADJ(COSMemory keepAlive.adj)
         EffectivePolicy eff = reg.resolve(base, dec.generation);
 
         char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};

@@ -19,7 +19,8 @@ namespace uro {
 struct ScenarioTactics {
     int gpuIdleTimer = 0;
     int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
-    int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）   // GPU idle_timer（0=不动；v0.22 GpuController）
+    int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）
+    int keepAliveAdj = -1;   // keepAlive.adj 档位（-1=不动）   // GPU idle_timer（0=不动；v0.22 GpuController）
     bool reclaimEnabled = true;
     bool freezeEnabled = false;
     int  maxKillPerRound = 0;
@@ -310,6 +311,15 @@ private:
         // （2112000 -> 1056000），URO 写入被覆盖且有打架风险。默认一律不写（-1）；
         // 保留控制器通路与档案结构（Oplus 行为若变化可重新启用）。
         t.uagTargetLoadsFirst = -1;
+        // keepAlive.adj 档位（v0.28：保活目标 adj——越小越保；源自 COSMemory keepAlive 段）
+        switch (s) {
+            case Scenario::PERFORMANCE:
+            case Scenario::FAST:            t.keepAliveAdj = 100; break;   // 强保前台
+            case Scenario::BALANCE:         t.keepAliveAdj = 200; break;   // 默认
+            case Scenario::POWER_SAVE:      t.keepAliveAdj = 250; break;   // 放宽保活
+            case Scenario::MEMORY_PRESSURE: t.keepAliveAdj = 300; break;   // 多回收
+            default:                        t.keepAliveAdj = -1;    break;  // GAME 不看/不动
+        }
         return t;
     }
 

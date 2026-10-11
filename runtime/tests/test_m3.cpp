@@ -389,5 +389,19 @@ int main() {
         std::printf("[uag-hi] ok (PERF=80/PS=95/BAL=-1)\n");
     }
 
+    // ---- [keepadj] keepAlive.adj 档位映射 ----
+    {
+        using namespace uro;
+        PolicyManager pm5;
+        Event e{EventType::TouchChanged, 1000, 1, "t", ""};
+        GlobalState st5; st5.screenOn = true; st5.foregroundPackage = "com.x";
+        auto d1 = pm5.decide(st5, e, 1000);
+        CHECK(d1.tactics.keepAliveAdj == 100, "PERF档 adj=100(强保)");
+        st5.screenOn = false;
+        auto d2 = pm5.decide(st5, e, 2000);
+        CHECK(d2.tactics.keepAliveAdj == 250, "PS档 adj=250(放宽)");
+        std::printf("[keepadj] ok (PERF=100/PS=250)\n");
+    }
+
 return fail == 0 ? 0 : 1;
 }

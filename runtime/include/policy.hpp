@@ -21,6 +21,7 @@ struct MemoryPolicy {
     int cooldownSec = -1;     // 触发冷却（缩短=更频繁重触发）
     int psiThreshold10x = -1; // PSI 阈值（十分位整数，5.0 → 50；占位本期未启用）
     int memFloorMb = -1;      // MemAvailable 下限 MB（占位本期未启用）
+    int  keepAliveAdj = -1;   // keepAlive.adj 档位（-1=不动；v0.28）
 };
 
 struct CpuPolicy {
@@ -105,6 +106,7 @@ inline bool materially_different(const EffectivePolicy& a, const EffectivePolicy
            a.gpu.maxFreq != b.gpu.maxFreq || a.gpu.minFreq != b.gpu.minFreq ||
            a.gpu.boost != b.gpu.boost ||
            a.memory.reclaimEnabled != b.memory.reclaimEnabled ||
+           a.memory.keepAliveAdj != b.memory.keepAliveAdj ||
            a.memory.freezeEnabled != b.memory.freezeEnabled ||
            a.memory.maxKillPerRound != b.memory.maxKillPerRound ||
            a.memory.protectedAdj != b.memory.protectedAdj;

@@ -192,6 +192,13 @@ public:
                                                               : "\"" + eff.memory.depth + "\"";
                     std::string dd;
                     bool dchg = false;
+                    // v0.28 KEEPADJ：keepAlive.adj（档位联动；GAME=-1 不动）
+                    if (eff.memory.keepAliveAdj >= 0) {
+                        std::string da;
+                        if (set_reclaim_field(ad, "adj", std::to_string(eff.memory.keepAliveAdj),
+                                              dryRun, &da) == WriteOutcome::Ok)
+                            r.detail += " | adj->" + std::to_string(eff.memory.keepAliveAdj);
+                    }
                     auto o = set_reclaim_field(ad, "depth", dT, false, &dd, &dchg);
                     if (o == WriteOutcome::Ok) {
                         r.detail += " | depth " + dd;
