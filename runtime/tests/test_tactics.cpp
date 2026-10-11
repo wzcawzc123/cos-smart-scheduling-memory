@@ -188,6 +188,92 @@ int main() {
         CHECK(gpu2->probe(missing).state == CtrlState::Degraded, "I12 无 kgsl 节点 -> Degraded");
     }
 
+    // ---------- J. v0.33 第6批：配置字段 ----------
+    {
+        TacticsConf c = parse_tactics_conf(
+            "[PERFORMANCE]\ncpuMinK=1200000\nuagSoftK=2400000\ngpuDefPwr=5\ngpuMinBw=50\n"
+            "gpuForceClk=1\ngpuForceBus=1\n");
+        CHECK(c.ok, "J1 第6批六字段 -> ok");
+        CHECK(c.applied == 6, "J2 字段计数=6");
+        CHECK(c.byScenario[Scenario::PERFORMANCE]["cpuMinK"] == "1200000", "J3 cpuMinK 值");
+        TacticsConf c2 = parse_tactics_conf("[PERFORMANCE]\ncpuMinK=100000\n");
+        CHECK(!c2.ok, "J4 cpuMinK 越界(<300000) 被拒");
+        TacticsConf c3 = parse_tactics_conf("[PERFORMANCE]\ngpuForceClk=5\n");
+        CHECK(!c3.ok, "J5 gpuForceClk 越界(须0/1) 被拒");
+        TacticsConf c4 = parse_tactics_conf("[PERFORMANCE]\nuagSoftK=2803200\n");
+        CHECK(c4.ok, "J6 uagSoftK 合法");
+        TacticsConf c5 = parse_tactics_conf("[PERFORMANCE]\ngpuMinBw=-1\n");
+        CHECK(c5.ok, "J7 gpuMinBw=-1 合法（回基线）");
+    }
+
+    // ---------- K. CPU 控制器：min_freq + uag soft_limit（fake sysfs）----------
+    {
+        std::string root = "/tmp/uro_cpu6_" + std::to_string((int)getpid());
+        std::string base = root + "/sys/devices/system/cpu/cpufreq";
+        fs::remove_all(root);
+        for (const char* pol : {"policy0", "policy3", "policy7"}) {
+            fs::create_directories(std::string(base) + "/" + pol + "/uag");
+            std::string p = std::string(base) + "/" + pol;
+            wfile(p + "/scaling_min_freq", "672000");
+            wfile(p + "/scaling_max_freq", "2016000");
+            wfile(p + "/scaling_governor", "uag");
+            wfile(p + "/uag/soft_limit_freq", "2016000");
+        }
+        SysfsAdapter ad(root);
+        auto cpu = make_cpu_controller("");
+        CHECK(cpu->probe(ad).state == CtrlState::Active, "K1 CPU probe -> Active");
+
+        EffectivePolicy eff;
+        eff.cpu.minFreq = 1200000;
+        eff.cpu.uagSoftLimitK = 1500000;
+        cpu->apply(eff, ad, false);
+        CHECK(rfile(base + "/policy0/scaling_min_freq") == "1200000", "K2 min_freq 写入");
+        CHECK(rfile(base + "/policy3/scaling_min_freq") == "1200000", "K3 min_freq 三簇同写");
+        CHECK(rfile(base + "/policy7/scaling_min_freq") == "1200000", "K4 min_freq policy7");
+        CHECK(rfile(base + "/policy0/uag/soft_limit_freq") == "1500000", "K5 soft_limit 写入");
+        cpu->apply(eff, ad, false);
+        CHECK(rfile(base + "/policy0/scaling_min_freq") == "1200000", "K6 同值幂等");
+
+        EffectivePolicy eff2;   // 全 -1 → 回基线
+        cpu->apply(eff2, ad, false);
+        CHECK(rfile(base + "/policy0/scaling_min_freq") == "672000", "K7 min_freq 回基线");
+        CHECK(rfile(base + "/policy0/uag/soft_limit_freq") == "2016000", "K8 soft_limit 回基线");
+        CHECK(rfile(base + "/policy7/uag/soft_limit_freq") == "2016000", "K9 soft_limit policy7 回基线");
+        fs::remove_all(root);
+    }
+
+    // ---------- L. GPU 第6批节点（fake sysfs）----------
+    {
+        std::string root = "/tmp/uro_gpu6_" + std::to_string((int)getpid());
+        std::string base = root + "/sys/class/kgsl/kgsl-3d0";
+        fs::remove_all(root);
+        fs::create_directories(base);
+        wfile(base + "/idle_timer", "80");
+        wfile(base + "/default_pwrlevel", "7");
+        wfile(base + "/minbw_timer", "10");
+        wfile(base + "/force_clk_on", "0");
+        wfile(base + "/force_bus_on", "0");
+        SysfsAdapter ad(root);
+        auto gpu = make_gpu_placeholder();
+        CHECK(gpu->probe(ad).state == CtrlState::Active, "L1 GPU probe -> Active");
+
+        EffectivePolicy eff;
+        eff.gpu.defPwr = 5; eff.gpu.minBw = 50; eff.gpu.forceClk = 1; eff.gpu.forceBus = 1;
+        gpu->apply(eff, ad, false);
+        CHECK(rfile(base + "/default_pwrlevel") == "5", "L2 default_pwrlevel 写入");
+        CHECK(rfile(base + "/minbw_timer") == "50", "L3 minbw_timer 写入");
+        CHECK(rfile(base + "/force_clk_on") == "1", "L4 force_clk_on 写入");
+        CHECK(rfile(base + "/force_bus_on") == "1", "L5 force_bus_on 写入");
+
+        EffectivePolicy eff2;
+        gpu->apply(eff2, ad, false);
+        CHECK(rfile(base + "/default_pwrlevel") == "7", "L6 回基线 default_pwrlevel");
+        CHECK(rfile(base + "/minbw_timer") == "10", "L7 回基线 minbw_timer");
+        CHECK(rfile(base + "/force_clk_on") == "0", "L8 回基线 force_clk_on");
+        CHECK(rfile(base + "/force_bus_on") == "0", "L9 回基线 force_bus_on");
+        fs::remove_all(root);
+    }
+
     std::printf("结果: %d passed, %d failed\n", pass, fail);
     return fail ? 1 : 0;
 }

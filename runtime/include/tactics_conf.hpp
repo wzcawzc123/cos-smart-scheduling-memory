@@ -59,6 +59,12 @@ inline const FieldSpec* field_specs(size_t& n) {
         {"gpuMinPwr", -1, 20,     false, false},
         {"gpuMaxPwr", -1, 20,     false, false},
         {"gpuSplit",  -1, 1,      false, false},
+        {"gpuDefPwr", -1, 20,     false, false},
+        {"gpuMinBw",  -1, 10000,  false, false},
+        {"gpuForceClk", -1, 1,    false, false},
+        {"gpuForceBus", -1, 1,    false, false},
+        {"cpuMinK",   -1, 4000000,false, false},
+        {"uagSoftK",  -1, 4000000,false, false},
         {"keepAdj",   -1, 1000,   false, false},
         {"cpuClamp",  0, 1,       true,  false},
         {"maxFreqK",  -1, 4000000,false, false},
@@ -137,9 +143,9 @@ inline TacticsConf parse_tactics_conf(const std::string& text) {
                 }
             }
             long n = std::atol(v.c_str());
-            if (k == "maxFreqK") {
+            if (k == "maxFreqK" || k == "cpuMinK" || k == "uagSoftK") {
                 if (n != -1 && n < 300000) {
-                    r.error = "maxFreqK 越界(-1 或 >=300000): " + v; r.errorLine = ln; return r;
+                    r.error = k + " 越界(-1 或 >=300000): " + v; r.errorLine = ln; return r;
                 }
             } else if (n < fs->lo || n > fs->hi) {
                 r.error = "值越界 " + k + "=[" + std::to_string(fs->lo) + "," +

@@ -23,6 +23,12 @@ struct ScenarioTactics {
     int gpuPwrMin = -1;      // v0.33 kgsl min_pwrlevel（0=最高频；-1=不干预/回基线）
     int gpuPwrMax = -1;      // v0.33 kgsl max_pwrlevel（-1=不干预/回基线）
     int gpuBusSplit = -1;    // v0.33 kgsl bus_split（0/1；-1=不干预/回基线）
+    int gpuDefPwr = -1;      // v0.33第6批 kgsl default_pwrlevel
+    int gpuMinBw = -1;       // v0.33第6批 kgsl minbw_timer（总线空闲计时）
+    int gpuForceClk = -1;    // v0.33第6批 kgsl force_clk_on（0/1）
+    int gpuForceBus = -1;    // v0.33第6批 kgsl force_bus_on（0/1）
+    int cpuMinFreqK = -1;    // v0.33第6批 scaling_min_freq（-1=不干预/回基线）
+    int uagSoftLimitK = -1;  // v0.33第6批 uag/soft_limit_freq（软上限）
     int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
     int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）
     int keepAliveAdj = -1;   // keepAlive.adj 档位（-1=不动）   // GPU idle_timer（0=不动；v0.22 GpuController）
@@ -85,6 +91,12 @@ public:
             else if (k == "gpuMinPwr")     t.gpuPwrMin = (int)n;
             else if (k == "gpuMaxPwr")     t.gpuPwrMax = (int)n;
             else if (k == "gpuSplit")      t.gpuBusSplit = (int)n;
+            else if (k == "gpuDefPwr")     t.gpuDefPwr = (int)n;
+            else if (k == "gpuMinBw")      t.gpuMinBw = (int)n;
+            else if (k == "gpuForceClk")   t.gpuForceClk = (int)n;
+            else if (k == "gpuForceBus")   t.gpuForceBus = (int)n;
+            else if (k == "cpuMinK")       t.cpuMinFreqK = (int)n;
+            else if (k == "uagSoftK")      t.uagSoftLimitK = (int)n;
             else if (k == "keepAdj")       t.keepAliveAdj = (int)n;
             else if (k == "cpuClamp")      t.cpuClamp = (n != 0);
             else if (k == "maxFreqK")      t.maxFreqKhz = (int)n;

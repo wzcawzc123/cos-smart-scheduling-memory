@@ -40,6 +40,11 @@ struct CpuPolicy {
     int uagDownRateUs = -1;
     int  uagHispeedLoad = -1;   // uag 升频阈值（-1=回基线；v0.25 行为参数）
     int  uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线；多段保留）
+    // ---- v0.33 第6批：CPU 下限 + uag 软上限（OPLUS 预留的正规夹频口）----
+    // minFreq：抬频率下限（性能档用；-1 = 不约束/回基线）
+    // uagSoftLimitK：uag/soft_limit_freq（软上限；比硬写 scaling_max_freq 温和，
+    //   且与 OPLUS 同一机制——避免与系统侧快节奏回写对抗）
+    int  uagSoftLimitK = -1;
 };
 
 struct GpuPolicy {
@@ -52,6 +57,11 @@ struct GpuPolicy {
     int  pwrMin = -1;     // min_pwrlevel：抬保底（游戏不让 GPU 掉到最低档）
     int  pwrMax = -1;     // max_pwrlevel：压上限（省电档）
     int  busSplit = -1;   // bus_split：0/1，-1=不干预
+    // ---- v0.33 第6批：GPU 更多旋钮（-1 = 不干预/回基线）----
+    int  defPwr = -1;     // default_pwrlevel：默认档位（系统空闲回落目标）
+    int  minBw = -1;      // minbw_timer：总线空闲计时（越大越保总线）
+    int  forceClk = -1;   // force_clk_on：0/1（1=GPU 时钟常开，耗电换稳定）
+    int  forceBus = -1;   // force_bus_on：0/1（1=总线常开）
 };
 
 struct EffectivePolicy {

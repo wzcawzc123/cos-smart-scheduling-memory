@@ -619,6 +619,14 @@ public:
             r.state = CtrlState::Degraded;
             r.detail += " — cpu class degraded";
         }
+        // ---- v0.33 第6批：CPU 下限 + uag 软上限（独立标量组）----
+        ensureScalars(ad);
+        {
+            std::string d;
+            applyScalar(ad, eff.cpu.minFreq, "minFreq", dryRun, d);
+            applyScalar(ad, eff.cpu.uagSoftLimitK, "uagSoft", dryRun, d);
+            if (!d.empty()) r.detail += " | " + d;
+        }
         state_ = r.state;
         last_ = r.detail;
         dirty_ = false;
@@ -678,6 +686,51 @@ private:
     std::map<std::string,std::string> tlBase_;
     std::map<std::string,int> uagBase_;
     std::map<std::string,int> downBase_;
+
+    // ---- v0.33 第6批：CPU 下限 + uag 软上限（独立标量节点组，不触碰上面的 uag rate/2PC 逻辑）----
+    struct ScalarNode {
+        std::string path, tag;
+        int  base = -1;
+        bool wrote = false;
+        int  last = -1;
+    };
+    std::vector<ScalarNode> scalars_;
+    bool scalarsInit_ = false;
+
+    void ensureScalars(SysfsAdapter& ad) {
+        if (scalarsInit_) return;
+        scalarsInit_ = true;
+        for (const char* pol : {"policy0", "policy3", "policy7"}) {
+            std::string base = std::string("/sys/devices/system/cpu/cpufreq/") + pol;
+            auto add = [&](const std::string& p, const char* tag) {
+                if (!ad.exists(p)) return;
+                ScalarNode n; n.path = p; n.tag = tag;
+                if (auto v = ad.read(p)) n.base = atoi(v->c_str());
+                scalars_.push_back(n);
+            };
+            add(base + "/scaling_min_freq", "minFreq");
+            add(base + "/uag/soft_limit_freq", "uagSoft");
+        }
+    }
+
+    // want>=0 写目标（同值幂等）；want<0 且我方写过 → 归还基线
+    void applyScalar(SysfsAdapter& ad, int want, const char* tag, bool dryRun, std::string& d) {
+        for (auto& n : scalars_) {
+            if (n.tag != tag) continue;
+            if (want >= 0) {
+                if (n.wrote && want == n.last) continue;
+                if (dryRun) { d += std::string(tag) + "=dry "; continue; }
+                ad.write(n.path, std::to_string(want), false, nullptr);
+                n.wrote = true; n.last = want;
+                d += n.tag + "=" + std::to_string(want) + " ";
+            } else if (n.wrote) {
+                if (dryRun) { d += std::string(tag) + "=drybase "; continue; }
+                ad.write(n.path, std::to_string(n.base), false, nullptr);
+                n.wrote = false; n.last = n.base;
+                d += n.tag + "=base(" + std::to_string(n.base) + ") ";
+            }
+        }
+    }
 };
 
 // ========================== GPU / Thermal 占位（M2′）==========================
@@ -691,10 +744,18 @@ public:
         hasMinPwr_   = ad.exists(kMinPwr);
         hasMaxPwr_   = ad.exists(kMaxPwr);
         hasBusSplit_ = ad.exists(kBusSplit);
+        hasDefPwr_   = ad.exists(kDefPwr);      // v0.33 第6批
+        hasMinBw_    = ad.exists(kMinBw);
+        hasForceClk_ = ad.exists(kForceClk);
+        hasForceBus_ = ad.exists(kForceBus);
         // 基线快照（回基线用；缺节点则该项永久 skip）
         if (hasMinPwr_)   { if (auto v = ad.read(kMinPwr))   baseMinPwr_ = atoi(v->c_str()); }
         if (hasMaxPwr_)   { if (auto v = ad.read(kMaxPwr))   baseMaxPwr_ = atoi(v->c_str()); }
         if (hasBusSplit_) { if (auto v = ad.read(kBusSplit)) baseBusSplit_ = atoi(v->c_str()); }
+        if (hasDefPwr_)   { if (auto v = ad.read(kDefPwr))   baseDefPwr_ = atoi(v->c_str()); }
+        if (hasMinBw_)    { if (auto v = ad.read(kMinBw))    baseMinBw_ = atoi(v->c_str()); }
+        if (hasForceClk_) { if (auto v = ad.read(kForceClk)) baseForceClk_ = atoi(v->c_str()); }
+        if (hasForceBus_) { if (auto v = ad.read(kForceBus)) baseForceBus_ = atoi(v->c_str()); }
         if (hasIdle_ || hasMinPwr_ || hasMaxPwr_ || hasBusSplit_) {
             r_ = CtrlReport{CtrlState::Active,
                             std::string("nodes: idle=") + (hasIdle_ ? "1" : "0") +
@@ -722,6 +783,10 @@ public:
         applyPwr(ad, kMinPwr,   eff.gpu.pwrMin,   baseMinPwr_,   hasMinPwr_,   wroteMin_,   lastMin_,   dryRun, d, "minPwr");
         applyPwr(ad, kMaxPwr,   eff.gpu.pwrMax,   baseMaxPwr_,   hasMaxPwr_,   wroteMax_,   lastMax_,   dryRun, d, "maxPwr");
         applyPwr(ad, kBusSplit, eff.gpu.busSplit, baseBusSplit_, hasBusSplit_, wroteSplit_, lastSplit_, dryRun, d, "busSplit");
+        applyPwr(ad, kDefPwr,   eff.gpu.defPwr,   baseDefPwr_,   hasDefPwr_,   wroteDef_,   lastDef_,   dryRun, d, "defPwr");
+        applyPwr(ad, kMinBw,    eff.gpu.minBw,    baseMinBw_,    hasMinBw_,    wroteBw_,    lastBw_,    dryRun, d, "minBw");
+        applyPwr(ad, kForceClk, eff.gpu.forceClk, baseForceClk_, hasForceClk_, wroteFClk_,  lastFClk_,  dryRun, d, "forceClk");
+        applyPwr(ad, kForceBus, eff.gpu.forceBus, baseForceBus_, hasForceBus_, wroteFBus_,  lastFBus_,  dryRun, d, "forceBus");
         if (!d.empty()) r_.detail = d;
         return r_;
     }
@@ -751,12 +816,20 @@ private:
     static constexpr const char* kMinPwr   = "/sys/class/kgsl/kgsl-3d0/min_pwrlevel";
     static constexpr const char* kMaxPwr   = "/sys/class/kgsl/kgsl-3d0/max_pwrlevel";
     static constexpr const char* kBusSplit = "/sys/class/kgsl/kgsl-3d0/bus_split";
+    static constexpr const char* kDefPwr   = "/sys/class/kgsl/kgsl-3d0/default_pwrlevel";
+    static constexpr const char* kMinBw    = "/sys/class/kgsl/kgsl-3d0/minbw_timer";
+    static constexpr const char* kForceClk = "/sys/class/kgsl/kgsl-3d0/force_clk_on";
+    static constexpr const char* kForceBus = "/sys/class/kgsl/kgsl-3d0/force_bus_on";
     CtrlReport r_{CtrlState::Probing, ""};
     int lastIdle_ = -1;
     bool hasIdle_ = false, hasMinPwr_ = false, hasMaxPwr_ = false, hasBusSplit_ = false;
+    bool hasDefPwr_ = false, hasMinBw_ = false, hasForceClk_ = false, hasForceBus_ = false;
     int  baseMinPwr_ = -1, baseMaxPwr_ = -1, baseBusSplit_ = -1;
+    int  baseDefPwr_ = -1, baseMinBw_ = -1, baseForceClk_ = -1, baseForceBus_ = -1;
     bool wroteMin_ = false, wroteMax_ = false, wroteSplit_ = false;
+    bool wroteDef_ = false, wroteBw_ = false, wroteFClk_ = false, wroteFBus_ = false;
     int  lastMin_ = -1, lastMax_ = -1, lastSplit_ = -1;
+    int  lastDef_ = -1, lastBw_ = -1, lastFClk_ = -1, lastFBus_ = -1;
 };
 
 class ThermalPlaceholder final : public Controller {

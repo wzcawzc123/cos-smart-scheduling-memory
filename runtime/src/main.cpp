@@ -279,6 +279,12 @@ int main(int argc, char** argv) {
         base.gpu.pwrMin = dec.tactics.gpuPwrMin;         // v0.33 GPU 边界接管
         base.gpu.pwrMax = dec.tactics.gpuPwrMax;
         base.gpu.busSplit = dec.tactics.gpuBusSplit;
+        base.gpu.defPwr = dec.tactics.gpuDefPwr;         // v0.33 第6批：GPU 更多旋钮
+        base.gpu.minBw = dec.tactics.gpuMinBw;
+        base.gpu.forceClk = dec.tactics.gpuForceClk;
+        base.gpu.forceBus = dec.tactics.gpuForceBus;
+        base.cpu.minFreq = dec.tactics.cpuMinFreqK;      // v0.33 第6批：CPU 下限 + uag 软上限
+        base.cpu.uagSoftLimitK = dec.tactics.uagSoftLimitK;
         base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
         base.cpu.uagTargetLoadsFirst = dec.tactics.uagTargetLoadsFirst;   // v0.26 多段首段
         base.memory.keepAliveAdj = dec.tactics.keepAliveAdj;   // v0.28 KEEPADJ(COSMemory keepAlive.adj)
