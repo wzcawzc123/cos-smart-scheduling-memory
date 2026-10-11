@@ -3,6 +3,27 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.29.0（versionCode 2900）— 看板「App 画像编辑器」（内联 Vue，纯前端）
+- **新能力**：KSU WebUI 看板新增「App 画像（可编辑）」卡，不再需要手工改 `app_profiles.txt`
+  - 表格列 pattern / down / up / cpuset + 中文语义（跟随档位 / 固定 μs / 小核·中核·大核·全核 / 核号）
+  - 增 / 改 / 删（**两击确认**）/ **↑↓ 调优先级**（文件顺序 = 匹配优先级）
+  - 前端校验：包名非空且无空白与 `|#`、速率 ≥ -1 或留空、cpuset 字符集、**只有包名的空字段行直接拦掉**
+  - **原子写**：备份 `app_profiles.txt.uro_bak_<epoch>`（保留最近 3 份）→ 同目录 tmp → `chown/chmod` 对齐原属主 → `mv` 重命名替换 → **回读逐字节比对**
+  - 卡内回显 **指挥链② 生成结果**（读 AppOpt `applist.conf` 的 URO-GEN 区块），写完 65s 自动再刷一眼
+- Vue 3.5.43 `vue.global.prod.js` **内联**进单文件 index.html（KSU WebUI 本地环境无外网依赖）；26.9KB → 218.6KB
+- **真机全链验收**（一加 11 / ColorOS 16，v0.29.0 部署后实测）：
+  - 新增 `com.ss.android.ugc.aweme|-1|-1|hp-core` → 文件 2 行、属主权限保持 `u0_a296:media_rw 660`、备份 32B = 旧内容 ✓
+  - 删除（两击确认）→ 回 1 行、新备份 71B = 两行版 ✓
+  - 指挥链②：`com.coolapk.market=p-core`、`com.ss.android.ugc.aweme=hp-core` 均在 60s 内进入 URO-GEN 区块 ✓
+- **踩坑定案**（已修，写进前端注释）：
+  1. Vue `:disabled="a || b"` 在 a、b 皆空时求值为**空字符串**，布尔型 DOM prop 经 `includeBooleanAttr('')` 判为 **true**
+     → 按钮永久 disabled，且浏览器**连 click 事件都不派发**（症状="点了没反应、无日志"）→ 必须 `!!` 收敛成布尔
+  2. KSU WebUI 的 WebView 内容**不进无障碍树**（节点恒 0）→ 验收只能截图/OCR 定位 + shell `input text` 注入
+  3. 运行时既有坑（本次在前端兜住）：四字段行 down/up 留空 → `atoi("…|cpuset")=0` 被当成"固定 0μs"
+     → 编辑器写回四字段行时把空速率统一补 `-1`
+- 测试：离线假桥 **29 断言全过**（`runtime/tools/webui_profile_test.mjs`）+ `node --check` 三段脚本 + 真机截图
+- **不改任何调度代码**（纯前端）；设计/坑记录见 `docs/看板画像编辑器_v0.29.0.md`
+
 ## v0.28.1（versionCode 2801）— L5-α 只读洞察（看板 + 离线工具）
 - 看板新增「L5 洞察」卡：最近 200 条决策的**档位分布**与 **Top 3 App 占比**
   （tel 段 tail 14→200；纯前端统计，**不改任何策略**）

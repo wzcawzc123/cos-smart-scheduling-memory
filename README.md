@@ -2,7 +2,7 @@
 
 > Android Root 系统级资源协同调度框架 —— COSMemory × 线程优化的**统一策略大脑**
 >
-> 一个框架、多个执行器、一个策略大脑。当前 **v0.28.0**：四档自治 + 智能感知 + **AppOpt 指挥链**（GAME 豁免 / 画像核组生成）+ **Thermal 夹档**（含趋势预判）+ **GPU/KEEPADJ 档位联动** + **L4 反馈闭环**（电量守卫 / 温度趋势 / 帧率哨兵）+ uag hispeed_load + Evidence 六源 + 看板，已实机运行于一加 11（ColorOS 16）。
+> 一个框架、多个执行器、一个策略大脑。当前 **v0.29.0**：四档自治 + 智能感知 + **AppOpt 指挥链**（GAME 豁免 / 画像核组生成）+ **Thermal 夹档**（含趋势预判）+ **GPU/KEEPADJ 档位联动** + **L4 反馈闭环**（电量守卫 / 温度趋势 / 帧率哨兵）+ uag hispeed_load + Evidence 六源 + 看板（含**画像可视化编辑器**），已实机运行于一加 11（ColorOS 16）。
 
 ## 它是什么
 
@@ -37,13 +37,18 @@ URO 不替换你的模块，而是接管**决策**：
 ## 智能感知与画像（第2步）
 
 - **touch_driver**：监听 `touchpanel` 设备 `BTN_TOUCH` 边沿（每下触摸仅 2 事件，天然节流）
-- **App 画像**：`log/app_profiles.txt` 每行 `通配符|down|up`，**画像 > 档位 > 基线**：
+- **App 画像**：`log/app_profiles.txt` 每行 `通配符|down|up|cpuset`，**画像 > 档位 > 基线**（首个命中生效，文件顺序即优先级）：
 
 ```text
 # -1 = 跟随档位；# 注释；热改热生效
 com.tencent.mm*|200000|-1      # 微信系：降频迟滞 200ms
 *.speedtest*|250000|500        # 测速类：更粘
+com.coolapk.market|-1|-1|p-core  # 第四字段：指挥链② 60s 生成 AppOpt 核组规则
 ```
+
+- **看板可视化编辑（v0.29.0）**：KSU WebUI → 「App 画像（可编辑）」卡增/改/删/调序，原子写 + 自动备份，
+  写前校验、写后回读；第四字段填好后 60s 内可在卡内看到指挥链② 生成的 `包名=核组`
+- 通配画像只走策略热读，**指挥链② 保守跳过**（AppOpt 通配语义未验）
 
 安全边界：GAME（让权）与 POWER_SAVE（省电）**不接受画像覆盖**。
 
@@ -67,7 +72,7 @@ URO（决策大脑）
 - KSU 模块自启 + 30s 看门狗 + **崩溃残留自动归还基线**（`bridge.state`/`cpu.state` DIRTY 状态机）+ 卸载兜底
 - **telemetry.jsonl**：每次档位/写入一条（`action_id`/gen/scenario/why/**applied**——applied=1 真写入、0 仅切档）
 - **死亡归因** `--attribute <pid>`：证据不足输出 `UNKNOWN`（exit 2），绝不伪造
-- WebUI 看板（模块自带 `webroot/`）：当前档/状态点/总闸/时间线/写入证据——与 COSMemory 面板同源（桥=ksu.ts、样式=奶油粉 Nexus、图标=Solar sprite）
+- WebUI 看板（模块自带 `webroot/`）：当前档/状态点/总闸/时间线/写入证据/**画像编辑器**——与 COSMemory 面板同源（桥=ksu.ts、样式=奶油粉 Nexus、图标=Solar sprite）；画像卡内联 Vue 3（无外网依赖）
 
 ## 与系统的关系（双向隔离实测）
 
