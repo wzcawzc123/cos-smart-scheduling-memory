@@ -124,3 +124,14 @@ python3 runtime/tools/pack_module.py
 - 设计基线：`docs/UnifiedRootOptimizer_设计文档_开发计划_验收标准_v1.1.md`
 - 里程碑报告：`docs/M0_*` ~ `docs/M4_*`（含阶段A/C、四档、画像等验收记录）
 - 上游与许可：`THIRD_PARTY_NOTICES.md` · LICENSE = GPL-3.0
+
+
+## 依赖与许可（内嵌模块）
+
+| 模块 | 归属 | 许可 |
+|---|---|---|
+| COSMemory（内存管理） | 本项目作者（基于 A1Memory 二次开发） | GPL-3.0 |
+| AppOpt（线程优化） | **原创 SutoLiu**（酷安 / GitHub） | **GPL-3.0** |
+
+AppOpt 以**官方原版 zip** 形式内嵌分发（未作任何修改），署名与许可随包保留；
+源码与原仓库：https://github.com/SutoLiu/AppOpt · https://gitee.com/sutoliu/AppOptR

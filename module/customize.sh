@@ -6,16 +6,38 @@ ui_print "- UnifiedRootOptimizer v0.16+ / COSMemory 联动检查"
 if [ -d /data/adb/modules/COSMemory ]; then
     ui_print "- COSMemory 已安装，跳过联装"
 else
-    CMZIP="$MODPATH/cosmemory/COSMemory_v1.2.1.zip"
+    CMZIP="$MODPATH/cosmemory/COSMemory_v1.2.2.zip"
     if [ -f "$CMZIP" ]; then
         KSU_BIN="$(command -v ksud 2>/dev/null)"
         [ -z "$KSU_BIN" ] && KSU_BIN=/data/adb/ksu/bin/ksud
         if [ -x "$KSU_BIN" ] && "$KSU_BIN" module install "$CMZIP" >/dev/null 2>&1; then
-            ui_print "- COSMemory v1.1.5 已随装（重启后生效）"
+            ui_print "- COSMemory v1.2.2 已随装（重启后生效）"
         else
             ui_print "! COSMemory 自动联装失败：可手动刷入 $MODPATH/cosmemory/ 内的包"
         fi
     else
         ui_print "! 未找到内嵌 COSMemory 包（打包缺 cosmemory/），URO 独立运行（桥将降级）"
+    fi
+fi
+
+# ── AppOpt（线程优化）联动 ─────────────────────────────────────────────
+# 版权与合规：AppOpt 原创 SutoLiu（酷安/GitHub），GPL-3.0 开源；
+# 本模块仅再分发其官方原版 zip（未作任何修改），保留署名与许可，源码与原仓库：
+# https://github.com/SutoLiu/AppOpt  ·  https://gitee.com/sutoliu/AppOptR
+# 与 COSMemory 同规则：已装则跳过（尊重用户自装版本），缺失/失败仅提示不 abort。
+if [ -d /data/adb/modules/AppOpt ]; then
+    ui_print "- AppOpt 已安装，跳过联装"
+else
+    APZIP="$MODPATH/appopt/AppOpt_v2.2.6.zip"
+    if [ -f "$APZIP" ]; then
+        KSU_BIN="$(command -v ksud 2>/dev/null)"
+        [ -z "$KSU_BIN" ] && KSU_BIN=/data/adb/ksu/bin/ksud
+        if [ -x "$KSU_BIN" ] && "$KSU_BIN" module install "$APZIP" >/dev/null 2>&1; then
+            ui_print "- AppOpt v2.2.6 已随装（原作者 SutoLiu · GPL3.0 · 重启后生效）"
+        else
+            ui_print "! AppOpt 自动联装失败：可手动刷入 $MODPATH/appopt/ 内的官方包"
+        fi
+    else
+        ui_print "! 未找到内嵌 AppOpt 包（打包缺 appopt/），URO 的线程约束源将降级"
     fi
 fi

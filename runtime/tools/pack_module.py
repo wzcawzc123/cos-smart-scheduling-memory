@@ -32,11 +32,17 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         if f.is_file():
             z.write(f, "webroot/assets/" + f.name)
     # COSMemory 内嵌包（联动装；缺失仅降级提示不阻断）
-    cm = pathlib.Path("/workspace/COSMemory_v1.2.1.zip")
+    cm = pathlib.Path("/workspace/COSMemory_v1.2.2.zip")
     if cm.exists():
-        z.write(cm, "cosmemory/COSMemory_v1.2.1.zip")
+        z.write(cm, "cosmemory/COSMemory_v1.2.2.zip")
     else:
         print("WARN: 内嵌 COSMemory 包缺失 -> 联动降级")
+    # AppOpt 内嵌包（GPL3.0 · 原创 SutoLiu · 仅再分发官方原版，不含修改）
+    ap = pathlib.Path("/workspace/AppOpt_v2.2.6.zip")
+    if ap.exists():
+        z.write(ap, "appopt/AppOpt_v2.2.6.zip")
+    else:
+        print("WARN: 内嵌 AppOpt 包缺失 -> 联动降级")
     z.write(BIN, "bin/URORuntime")
     z.write(MOD / "bin" / "power_sampler.sh", "bin/power_sampler.sh")   # M5 电量补救采样
     # 可执行权限位（KSU 解压后按此还原）
