@@ -3,6 +3,17 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.21.0（versionCode 2100）— GPU 层侦察 + 观测落盘（C 组第一项第一步）
+- **侦察定案（Adreno 740 / kgsl-3d0）**：安全区 = `idle_timer`（行为参数）；
+  禁区 = `max_pwrlevel`/`max_gpuclk`/`max_clock_mhz`（上限）、devfreq governor（策略）、`force_*`（调试）
+- **地盘判定实验**：idle_timer 写 120 → 45s 无系统回写 → 安全可控（已恢复 80）
+- `gpu_json`（busy% + cur MHz + idle_timer）→ **gpu.jsonl 60s 观测**（只读零风险，实测出数）
+- **待办**：GpuController 实装（idle_timer 档位联动，需 2PC+注册链，独立工程）
+- **事故与修复**：曾发现 watchdog（uro/service.sh）中断、手动启动时参数误传（`--bridge-enforce`
+  被当 logdir）致证据停摆 → 已用 daemon 恢复 service.sh + 正确启动，gpu.jsonl 正常；
+  中断根因未定（模块开机自启机制本身完好，观察下次重启）
+- 单测 +3（[gpu]），189 全过
+
 ## v0.20.0（versionCode 2000）— Thermal 干预（T-OBS → 真 Detector）
 - 温度进决策：`read_max_temp` + `next_thermal_level`（迟滞 T1/T2/6°C）→ 边沿推
   `ThermalChanged` → `GlobalState.thermalLevel`（0/1/2）→ **decide 夹档**（不新开写入路径）

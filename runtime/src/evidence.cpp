@@ -62,6 +62,20 @@ std::string battery_json(const std::string& psRoot) {
 }
 
 // Thermal Detector（T-OBS→干预）：最高热点温度（无数据返回 -1）
+// GPU 观测（Adreno kgsl，只读）：busy% + cur freq MHz
+std::string gpu_json(const std::string& kgslRoot) {
+    auto rd = [&](const char* f) -> long {
+        std::ifstream i(kgslRoot + "/" + f);
+        long v = -1; if (i.is_open()) i >> v; return v;
+    };
+    long busy = rd("gpu_busy_percentage");
+    long clk = rd("gpuclk");
+    std::ostringstream o;
+    o << "\"gpuBusy\":" << busy << ",\"gpuClkMhz\":" << (clk > 0 ? clk / 1000000 : -1)
+      << ",\"gpuIdleTimer\":" << rd("idle_timer");
+    return o.str();
+}
+
 int read_max_temp(const std::string& thermalRoot) {
     int best = -1;
     DIR* d = opendir(thermalRoot.c_str());

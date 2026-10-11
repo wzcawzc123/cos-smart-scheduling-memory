@@ -546,6 +546,20 @@ int main() {
         std::printf("[urogen] ok (第四字段/区块边界/幂等/EXEMPT兼容/热改重生成)\n");
     }
 
+    // ---- 19. [gpu] GPU 观测 JSON ----
+    {
+        std::string d = dir + "_gpu";
+        system(("mkdir -p " + d).c_str());
+        { std::ofstream f(d + "/gpu_busy_percentage"); f << "11"; }
+        { std::ofstream f(d + "/gpuclk"); f << "220000000"; }
+        { std::ofstream f(d + "/idle_timer"); f << "80"; }
+        std::string j = gpu_json(d);
+        CHECK(j.find("\"gpuBusy\":11") != std::string::npos, "gpuBusy");
+        CHECK(j.find("\"gpuClkMhz\":220") != std::string::npos, "gpuClkMhz");
+        CHECK(j.find("\"gpuIdleTimer\":80") != std::string::npos, "idleTimer读数");
+        std::printf("[gpu] ok (busy/clk/idle_timer)\n");
+    }
+
     test_no_override(dir);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);

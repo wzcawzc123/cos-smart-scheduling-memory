@@ -403,6 +403,11 @@ void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, s
             std::ofstream lf(logdir + "/thermal.jsonl", std::ios::app);
             lf << "{\"ts\":" << now_ms() << "," << tj << "," << bj << "}\n";
             ev_hb(logdir, "thermal-done");
+            // GPU 观测（v0.21，只读；idle_timer 干预待 GpuController 实装）
+            {
+                std::ofstream gf(logdir + "/gpu.jsonl", std::ios::app);
+                gf << "{\"ts\":" << now_ms() << "," << gpu_json("/sys/class/kgsl/kgsl-3d0") << "}\n";
+            }
             // Thermal Detector：温度→热级（迟滞）→ 边沿推 ThermalChanged（level:temp）
             {
                 int en, t1, t2;
