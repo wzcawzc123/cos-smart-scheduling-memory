@@ -249,20 +249,41 @@ void sampler_driver(EventQueue& q, DriverPaths p, std::atomic<bool>& run) {
 
 // ---------- D. ScreenChanged（property 零 fork；缺失 → DEGRADED 一次） ----------
 void screen_driver(EventQueue& q, EventQueue*, std::atomic<bool>& run) {
+    // v0.33.1 修复（体检 2026-10-13 抓到）：debug.tracing.screen_state 是开机后才出现的 prop
+    // （ColorOS 实测：启动时缺失、稍后被系统写入）。旧实现 find 失败即永久挂死 →
+    // 熄屏永不识别 → POWER_SAVE 永不触发（当天 25h 零省电档）。
+    // 新逻辑：主循环每轮 re-find（处理晚到）；始终缺失 → 降级背光 panel0（>0 = 亮屏）。
     const prop_info* pi = __system_property_find("debug.tracing.screen_state");
-    if (!pi) {
-        q.push({EventType::ControllerFault, now_ms(), 0, "screen-prop", "prop missing: debug.tracing.screen_state (DEGRADED, screen disabled)"});
-        while (run) usleep(500 * 1000);
-        return;
-    }
+    bool faultLogged = false;
     int last = -2;
     while (run) {
-        char name[PROP_NAME_MAX] = {0}, val[PROP_VALUE_MAX] = {0};
-        __system_property_read(pi, name, val);
-        int raw = atoi(val);
-        // Oplus 实测语义（2026-10-08）：亮屏=2、熄屏=1（原始代码判 raw==0 为灭 → 熄屏值 1 被
-        // 误判为亮，ScreenChanged(off) 永不触发）。按"2=亮，其余=灭"判定。
-        int st = (raw == 2) ? 1 : 0;
+        if (!pi) pi = __system_property_find("debug.tracing.screen_state");
+        int st;
+        if (pi) {
+            char name[PROP_NAME_MAX] = {0}, val[PROP_VALUE_MAX] = {0};
+            __system_property_read(pi, name, val);
+            int raw = atoi(val);
+            // Oplus 实测语义（2026-10-08）：亮屏=2、熄屏=1（原始代码判 raw==0 为灭 → 熄屏值 1 被
+            // 误判为亮，ScreenChanged(off) 永不触发）。按"2=亮，其余=灭"判定。
+            st = (raw == 2) ? 1 : 0;
+        } else {
+            // 降级：背光节点（>0 = 亮屏）。prop 晚到时自动切回 prop。
+            std::ifstream bf("/sys/class/backlight/panel0-backlight/brightness");
+            int bv = -1;
+            if (bf.is_open()) { std::string s; std::getline(bf, s); bv = atoi(s.c_str()); }
+            if (bv >= 0) {
+                st = (bv > 0) ? 1 : 0;
+                if (!faultLogged) {
+                    q.push({EventType::ControllerFault, now_ms(), 0, "screen-prop",
+                            "prop missing: debug.tracing.screen_state (DEGRADED, fallback=backlight panel0)"});
+                    faultLogged = true;
+                }
+            } else {
+                // 两者都不可用：等 prop 晚到，不挂死
+                usleep(500 * 1000);
+                continue;
+            }
+        }
         g_screen_on.store(st != 0, std::memory_order_relaxed);   // 供 focus_driver 自适应
         if (st != last) {
             if (last != -2) q.push({EventType::ScreenChanged, now_ms(), 0, "screen-prop", st ? "on" : "off"});

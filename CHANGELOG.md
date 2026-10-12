@@ -3,6 +3,16 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.33.1（versionCode 3301）— 熄屏识别修复（省电档复活）
+- **根因**：`screen_driver` 启动时 `__system_property_find("debug.tracing.screen_state")`
+  失败即**永久挂起** → 熄屏永不识别 → POWER_SAVE 永不触发
+- **实锤**（2026-10-13 日用体检）：25h 零 ScreenChanged 事件、零省电档；
+  prop 实为**开机后被系统写入**（晚到），旧代码没有再轮询 find
+- **修复**：主循环每轮 re-find prop（处理晚到）；始终缺失 → 降级读取
+  `/sys/class/backlight/panel0-backlight/brightness`（>0 = 亮屏），并记一次
+  `ControllerFault(DEGRADED, fallback=backlight)`；两者都不可用则 500ms 重试，绝不挂死
+- 测试：288 断言 0 失败；需真机验证（重启后应看到 ScreenChanged off → POWER_SAVE 触发）
+
 ## v0.33.0（versionCode 3300）— 参数外置 + 旋钮扩容
 - **参数外置**：场景配方抽到 `/sdcard/Android/UnifiedRootOptimizer/uro_tactics.conf`
   · INI 风格（`[场景]` + `key=value`），**改完保存即热生效**（mtime 热重载），不再重编译刷模块
