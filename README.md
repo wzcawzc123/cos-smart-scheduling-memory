@@ -2,7 +2,18 @@
 
 > Android Root 系统级资源协同调度框架 —— COSMemory × 线程优化的**统一策略大脑**
 >
-> 一个框架、多个执行器、一个策略大脑。当前 **v0.30.0**：四档自治 + 智能感知 + **AppOpt 指挥链**（GAME 豁免 / 画像核组生成）+ **Thermal 夹档**（含趋势预判）+ **GPU/KEEPADJ 档位联动** + **L4 反馈闭环**（电量守卫 / 温度趋势 / 帧率哨兵）+ uag hispeed_load + Evidence 六源 + **五分区看板**（概览 / 趋势图表 / 画像编辑 / 证据 / 关于），已实机运行于一加 11（ColorOS 16）。
+> 一个框架、多个执行器、一个策略大脑。当前 **v0.36.0**：四档自治 + 智能感知 + **参数外置**（场景配方热改）+ **手动档位**（WebUI 五档切换）+ **三簇独立夹频** + **GPU 边界接管** + **Thermal 夹档** + AppOpt 指挥链 + L4 反馈闭环（电量守卫/温度/帧率哨兵）+ uag 联动 + **uclamp** + Evidence 六源 + 五分区看板 + **WebUI 配方编辑器**，实机运行于一加 11（ColorOS 16）。
+
+## 近期版本（v0.31 → v0.36）
+
+| 版本 | 内容 |
+|---|---|
+| v0.31.0 | 热管理防震荡（dwell 3min 只升不降）+ L2 语义修正 |
+| v0.32.0 | 内嵌双模块（COSMemory v1.2.2 + AppOpt v2.2.6），一键装齐三模块 |
+| v0.33.x | **参数外置**：`uro_tactics.conf` 场景配方（热重载 / 整份拒绝 / 自检工具）；GPU 边界接管（min·max_pwrlevel、bus_split）；Thermal 观察器；6 个新旋钮。**v0.33.1 修熄屏识别**（`debug.tracing.screen_state` 晚到导致 POWER_SAVE 永不触发） |
+| v0.34.0 | **手动档位**：WebUI 五档（自动/省电/均衡/性能/极速），安全阀与游戏让权优先；退出信号诊断 |
+| v0.35.0 | **三簇独立夹频**（`maxFreqK` / `maxFreqK3` / `maxFreqK7`）；对照组 B（NovaSched 映射，见 `docs/`） |
+| v0.36.0 | GPU 补全（`thermal_pwrlevel` / `min_clock_mhz` / `max_clock_mhz`）+ **uclamp 接入**（`sched_util_clamp_*`）+ WebUI **配方编辑器** + README 对齐 |
 
 ## 它是什么
 

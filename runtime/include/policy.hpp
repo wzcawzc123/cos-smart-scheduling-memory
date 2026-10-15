@@ -47,6 +47,10 @@ struct CpuPolicy {
     // uagSoftLimitK：uag/soft_limit_freq（软上限；比硬写 scaling_max_freq 温和，
     //   且与 OPLUS 同一机制——避免与系统侧快节奏回写对抗）
     int  uagSoftLimitK = -1;
+    // ---- v0.36 uclamp（全局节点，非 per-cluster；0..1024，-1 = 不干预/回基线）----
+    int  uclampMin = -1;   // sched_util_clamp_min：抬高 util 下限 → 更容易升频（性能向）
+    int  uclampMax = -1;   // sched_util_clamp_max：压低 util 上限（省电向）
+    int  uclampRt = -1;    // sched_util_clamp_min_rt_default：RT 任务 util 下限
 };
 
 struct GpuPolicy {
@@ -64,6 +68,10 @@ struct GpuPolicy {
     int  minBw = -1;      // minbw_timer：总线空闲计时（越大越保总线）
     int  forceClk = -1;   // force_clk_on：0/1（1=GPU 时钟常开，耗电换稳定）
     int  forceBus = -1;   // force_bus_on：0/1（1=总线常开）
+    // ---- v0.36 GPU 补全 ----
+    int  thermalPwr = -1; // thermal_pwrlevel：温控档位（0=最高性能）
+    int  minClkMhz = -1;  // min_clock_mhz：GPU 最低时钟（MHz）
+    int  maxClkMhz = -1;  // max_clock_mhz：GPU 最高时钟（MHz）
 };
 
 struct EffectivePolicy {

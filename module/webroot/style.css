@@ -263,3 +263,12 @@ code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
 .modebtn:active{transform:scale(.96);}
 .modebtn.on{background:var(--ink); color:var(--bg); border-color:var(--ink);}
 .modebtn:disabled{opacity:.45; cursor:default;}
+
+/* v0.36 配方编辑器 */
+.ta{width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:14px; background:var(--fill);
+  color:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; line-height:1.5;
+  padding:10px 12px; resize:vertical;}
+.btn{padding:8px 14px; border-radius:12px; border:1px solid var(--line); background:var(--fill); color:var(--ink2);
+  font-size:13px; font-weight:600; cursor:pointer;}
+.btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink);}
+.btn:disabled{opacity:.45; cursor:default;}

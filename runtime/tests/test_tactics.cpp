@@ -219,6 +219,10 @@ int main() {
             wfile(p + "/scaling_governor", "uag");
             wfile(p + "/uag/soft_limit_freq", "2016000");
         }
+        fs::create_directories(root + "/proc/sys/kernel");
+        wfile(root + "/proc/sys/kernel/sched_util_clamp_min", "1024");
+        wfile(root + "/proc/sys/kernel/sched_util_clamp_max", "1024");
+        wfile(root + "/proc/sys/kernel/sched_util_clamp_min_rt_default", "0");
         SysfsAdapter ad(root);
         auto cpu = make_cpu_controller("");
         CHECK(cpu->probe(ad).state == CtrlState::Active, "K1 CPU probe -> Active");
@@ -256,6 +260,17 @@ int main() {
         CHECK(rfile(base + "/policy0/scaling_max_freq") == "2016000", "K14 回基线 policy0");
         CHECK(rfile(base + "/policy3/scaling_max_freq") == "2016000", "K15 回基线 policy3");
         CHECK(rfile(base + "/policy7/scaling_max_freq") == "2016000", "K16 回基线 policy7");
+
+        // v0.36 uclamp（全局节点）
+        EffectivePolicy eff5;
+        eff5.cpu.uclampMin = 512; eff5.cpu.uclampMax = 1024; eff5.cpu.uclampRt = 100;
+        cpu->apply(eff5, ad, false);
+        CHECK(rfile(root + "/proc/sys/kernel/sched_util_clamp_min") == "512", "K17 uclamp_min 写入");
+        CHECK(rfile(root + "/proc/sys/kernel/sched_util_clamp_min_rt_default") == "100", "K18 uclamp_rt 写入");
+        EffectivePolicy eff6;
+        cpu->apply(eff6, ad, false);
+        CHECK(rfile(root + "/proc/sys/kernel/sched_util_clamp_min") == "1024", "K19 uclamp_min 回基线");
+        CHECK(rfile(root + "/proc/sys/kernel/sched_util_clamp_min_rt_default") == "0", "K20 uclamp_rt 回基线");
         fs::remove_all(root);
     }
 
@@ -270,6 +285,9 @@ int main() {
         wfile(base + "/minbw_timer", "10");
         wfile(base + "/force_clk_on", "0");
         wfile(base + "/force_bus_on", "0");
+        wfile(base + "/thermal_pwrlevel", "0");
+        wfile(base + "/min_clock_mhz", "220");
+        wfile(base + "/max_clock_mhz", "680");
         SysfsAdapter ad(root);
         auto gpu = make_gpu_placeholder();
         CHECK(gpu->probe(ad).state == CtrlState::Active, "L1 GPU probe -> Active");
@@ -288,6 +306,19 @@ int main() {
         CHECK(rfile(base + "/minbw_timer") == "10", "L7 回基线 minbw_timer");
         CHECK(rfile(base + "/force_clk_on") == "0", "L8 回基线 force_clk_on");
         CHECK(rfile(base + "/force_bus_on") == "0", "L9 回基线 force_bus_on");
+
+        // v0.36 GPU 补全
+        EffectivePolicy eff3;
+        eff3.gpu.thermalPwr = 2; eff3.gpu.minClkMhz = 400; eff3.gpu.maxClkMhz = 550;
+        gpu->apply(eff3, ad, false);
+        CHECK(rfile(base + "/thermal_pwrlevel") == "2", "L10 thermal_pwrlevel 写入");
+        CHECK(rfile(base + "/min_clock_mhz") == "400", "L11 min_clock_mhz 写入");
+        CHECK(rfile(base + "/max_clock_mhz") == "550", "L12 max_clock_mhz 写入");
+        EffectivePolicy eff4;
+        gpu->apply(eff4, ad, false);
+        CHECK(rfile(base + "/thermal_pwrlevel") == "0", "L13 回基线 thermal_pwrlevel");
+        CHECK(rfile(base + "/min_clock_mhz") == "220", "L14 回基线 min_clock_mhz");
+        CHECK(rfile(base + "/max_clock_mhz") == "680", "L15 回基线 max_clock_mhz");
         fs::remove_all(root);
     }
 

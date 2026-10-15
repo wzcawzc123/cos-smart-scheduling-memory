@@ -76,6 +76,22 @@
       <div class="row" v-if="!st.enforce"><span class="meta">总闸关闭中——档位选择在总闸开启后才会生效</span></div>
     </div>
 
+    <div class="sec"><span><svg class="ic"><use href="#i-award-fill"/></svg>场景配方</span><span class="r">uro_tactics.conf · 改完保存即热生效</span></div>
+    <div class="card tight">
+      <div class="row" style="display:block">
+        <textarea class="ta" v-model="tacticsText" spellcheck="false" rows="12"
+                  placeholder="[POWER_SAVE]&#10;cpuClamp=1&#10;maxFreqK=1900800"></textarea>
+      </div>
+      <div class="row">
+        <span class="meta">{{ tacticsHint }}</span>
+        <span style="display:flex; gap:8px">
+          <button class="btn" :disabled="busy" @click="loadTactics()">重载</button>
+          <button class="btn primary" :disabled="busy" @click="saveTactics()">保存</button>
+        </span>
+      </div>
+      <div class="row"><span class="meta">字段与值域见 docs/参数外置_v0.33_spec.md；任一行写错 → 整份被拒绝（events.log 记 TacticsConf REJECT），运行态不变</span></div>
+    </div>
+
     <div class="sec"><span><svg class="ic"><use href="#i-lock-unlock-fill"/></svg>接管总闸</span><span class="r">与 COSMemory 面板同源</span></div>
     <div class="card tight">
       <div class="row">

@@ -624,6 +624,9 @@ public:
             applyScalar(ad, eff.cpu.maxFreq7, "maxF7", dryRun, d);
             applyScalar(ad, eff.cpu.minFreq, "minFreq", dryRun, d);
             applyScalar(ad, eff.cpu.uagSoftLimitK, "uagSoft", dryRun, d);
+            applyScalar(ad, eff.cpu.uclampMin, "uclampMin", dryRun, d);   // v0.36
+            applyScalar(ad, eff.cpu.uclampMax, "uclampMax", dryRun, d);
+            applyScalar(ad, eff.cpu.uclampRt, "uclampRt", dryRun, d);
             if (!d.empty()) r.detail += " | " + d;
         }
         state_ = r.state;
@@ -712,6 +715,19 @@ private:
             // v0.35 per-cluster 上限：policy0/3/7 各一个节点（tag maxF0/3/7）
             add(base + "/scaling_max_freq", (std::string("maxF") + pol[6]).c_str());
         }
+        // v0.36 全局节点（uclamp；add lambda 作用域在循环内，此处直接构造）
+        {
+            const char* gp[3] = {"/proc/sys/kernel/sched_util_clamp_min",
+                                 "/proc/sys/kernel/sched_util_clamp_max",
+                                 "/proc/sys/kernel/sched_util_clamp_min_rt_default"};
+            const char* gt[3] = {"uclampMin", "uclampMax", "uclampRt"};
+            for (int gi = 0; gi < 3; ++gi) {
+                if (!ad.exists(gp[gi])) continue;
+                ScalarNode n; n.path = gp[gi]; n.tag = gt[gi];
+                if (auto v = ad.read(gp[gi])) n.base = atoi(v->c_str());
+                scalars_.push_back(n);
+            }
+        }
     }
 
     // want>=0 写目标（同值幂等）；want<0 且我方写过 → 归还基线
@@ -749,6 +765,9 @@ public:
         hasMinBw_    = ad.exists(kMinBw);
         hasForceClk_ = ad.exists(kForceClk);
         hasForceBus_ = ad.exists(kForceBus);
+        hasThermalPwr_ = ad.exists(kThermalPwr);
+        hasMinClk_ = ad.exists(kMinClk);
+        hasMaxClk_ = ad.exists(kMaxClk);
         // 基线快照（回基线用；缺节点则该项永久 skip）
         if (hasMinPwr_)   { if (auto v = ad.read(kMinPwr))   baseMinPwr_ = atoi(v->c_str()); }
         if (hasMaxPwr_)   { if (auto v = ad.read(kMaxPwr))   baseMaxPwr_ = atoi(v->c_str()); }
@@ -757,6 +776,9 @@ public:
         if (hasMinBw_)    { if (auto v = ad.read(kMinBw))    baseMinBw_ = atoi(v->c_str()); }
         if (hasForceClk_) { if (auto v = ad.read(kForceClk)) baseForceClk_ = atoi(v->c_str()); }
         if (hasForceBus_) { if (auto v = ad.read(kForceBus)) baseForceBus_ = atoi(v->c_str()); }
+        if (hasThermalPwr_) { if (auto v = ad.read(kThermalPwr)) baseThermalPwr_ = atoi(v->c_str()); }
+        if (hasMinClk_) { if (auto v = ad.read(kMinClk)) baseMinClk_ = atoi(v->c_str()); }
+        if (hasMaxClk_) { if (auto v = ad.read(kMaxClk)) baseMaxClk_ = atoi(v->c_str()); }
         if (hasIdle_ || hasMinPwr_ || hasMaxPwr_ || hasBusSplit_) {
             r_ = CtrlReport{CtrlState::Active,
                             std::string("nodes: idle=") + (hasIdle_ ? "1" : "0") +
@@ -788,6 +810,9 @@ public:
         applyPwr(ad, kMinBw,    eff.gpu.minBw,    baseMinBw_,    hasMinBw_,    wroteBw_,    lastBw_,    dryRun, d, "minBw");
         applyPwr(ad, kForceClk, eff.gpu.forceClk, baseForceClk_, hasForceClk_, wroteFClk_,  lastFClk_,  dryRun, d, "forceClk");
         applyPwr(ad, kForceBus, eff.gpu.forceBus, baseForceBus_, hasForceBus_, wroteFBus_,  lastFBus_,  dryRun, d, "forceBus");
+        applyPwr(ad, kThermalPwr, eff.gpu.thermalPwr, baseThermalPwr_, hasThermalPwr_, wroteTPwr_, lastTPwr_, dryRun, d, "thermalPwr");
+        applyPwr(ad, kMinClk, eff.gpu.minClkMhz, baseMinClk_, hasMinClk_, wroteMinClk_, lastMinClk_, dryRun, d, "minClk");
+        applyPwr(ad, kMaxClk, eff.gpu.maxClkMhz, baseMaxClk_, hasMaxClk_, wroteMaxClk_, lastMaxClk_, dryRun, d, "maxClk");
         if (!d.empty()) r_.detail = d;
         return r_;
     }
@@ -821,16 +846,23 @@ private:
     static constexpr const char* kMinBw    = "/sys/class/kgsl/kgsl-3d0/minbw_timer";
     static constexpr const char* kForceClk = "/sys/class/kgsl/kgsl-3d0/force_clk_on";
     static constexpr const char* kForceBus = "/sys/class/kgsl/kgsl-3d0/force_bus_on";
+    static constexpr const char* kThermalPwr = "/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel";
+    static constexpr const char* kMinClk = "/sys/class/kgsl/kgsl-3d0/min_clock_mhz";
+    static constexpr const char* kMaxClk = "/sys/class/kgsl/kgsl-3d0/max_clock_mhz";
     CtrlReport r_{CtrlState::Probing, ""};
     int lastIdle_ = -1;
     bool hasIdle_ = false, hasMinPwr_ = false, hasMaxPwr_ = false, hasBusSplit_ = false;
     bool hasDefPwr_ = false, hasMinBw_ = false, hasForceClk_ = false, hasForceBus_ = false;
+    bool hasThermalPwr_ = false, hasMinClk_ = false, hasMaxClk_ = false;
     int  baseMinPwr_ = -1, baseMaxPwr_ = -1, baseBusSplit_ = -1;
     int  baseDefPwr_ = -1, baseMinBw_ = -1, baseForceClk_ = -1, baseForceBus_ = -1;
+    int  baseThermalPwr_ = -1, baseMinClk_ = -1, baseMaxClk_ = -1;
     bool wroteMin_ = false, wroteMax_ = false, wroteSplit_ = false;
     bool wroteDef_ = false, wroteBw_ = false, wroteFClk_ = false, wroteFBus_ = false;
+    bool wroteTPwr_ = false, wroteMinClk_ = false, wroteMaxClk_ = false;
     int  lastMin_ = -1, lastMax_ = -1, lastSplit_ = -1;
     int  lastDef_ = -1, lastBw_ = -1, lastFClk_ = -1, lastFBus_ = -1;
+    int  lastTPwr_ = -1, lastMinClk_ = -1, lastMaxClk_ = -1;
 };
 
 class ThermalPlaceholder final : public Controller {

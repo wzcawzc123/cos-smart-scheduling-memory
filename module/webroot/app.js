@@ -613,11 +613,31 @@
       }
       function stopPoll() { if (tFast) clearInterval(tFast); if (tSlow) clearInterval(tSlow); tFast = tSlow = null; }
       function refreshAll() {
+        loadTactics();
         busy.value = true;
         Promise.all([loadStatus(), loadSparks(), tab.value === 'trend' ? loadTrend() : null, tab.value === 'evidence' ? loadEvidence() : null])
           .catch(function () { }).then(function () { busy.value = false; syncCharts(); });
       }
       var armT = null;
+      var tacticsText = ref('');
+      var tacticsHint = ref('');
+      function loadTactics() {
+        return rd('cat ' + URO + '/uro_tactics.conf 2>/dev/null').then(function (b) {   // rd 内部已 base64
+          tacticsText.value = b || '';
+          tacticsHint.value = b ? ('已加载 ' + b.split('\n').length + ' 行') : '（文件不存在或为空）';
+        });
+      }
+      function saveTactics() {
+        busy.value = true;
+        tacticsHint.value = '保存中…';
+        var b64 = btoa(unescape(encodeURIComponent(tacticsText.value)));
+        sh('echo "' + b64 + '" | base64 -d > ' + URO + '/uro_tactics.conf').then(function () {
+          return loadTactics();
+        }).then(function () {
+          tacticsHint.value = '已保存（热生效；拒绝会记入 events.log）';
+          busy.value = false;
+        });
+      }
       function setManual(k) {
         busy.value = true;
         sh('echo ' + k + ' > ' + URO + '/manual_mode.txt').then(function () {
@@ -803,6 +823,7 @@
         sparks: sparks, trend: trend, win: win, setWin: setWin, trendEmpty: trendEmpty,
         ev: ev, band: band, threadGroups: threadGroups,
         refreshAll: refreshAll, toggleEnforce: toggleEnforce, setManual: setManual, MODES: MODES,
+        tacticsText: tacticsText, tacticsHint: tacticsHint, loadTactics: loadTactics, saveTactics: saveTactics,
         scenOf: scen, nf: nf, fmtAgo: fmtAgo, fmtDur: fmtDur, pctOf: pctOf,
         sinceText: sinceText, WINLIST: WINLIST, lastOf: lastOf, pct1: pct1, clock: clock,
         paths: { log: LOG, module: MOD, profile: PROF, appopt: APPOPT }

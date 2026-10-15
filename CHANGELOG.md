@@ -3,6 +3,18 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.36.0（versionCode 3600）— GPU 补全 + uclamp + 配方编辑器
+- **GPU 补到 7/9 节点**：新增 `thermal_pwrlevel`（温控档位）、`min_clock_mhz`、`max_clock_mhz`
+  · 复用 v0.33 的通用 applyPwr（写入/回基线/幂等/dry-run）
+  · 本机 GPU 频点表：680/615/550/475/401/348/295/220 MHz（曲线测量用）
+- **uclamp 接入**：`sched_util_clamp_min` / `_max` / `_min_rt_default`（0..1024）
+  · 本机节点存在（默认 1024/1024/0），性能档可抬 util 下限、省电档可压上限
+  · 走 CPU 侧"独立标量组"（与 min_freq / soft_limit 同一机制，零新机制）
+- **WebUI 配方编辑器**：新增「场景配方」卡片（文本框 + 重载 + 保存），直接编辑 `uro_tactics.conf`
+- **README 对齐**：补 v0.31→v0.36 版本表，头部描述更新（此前停在 v0.30.0）
+- 测试：302 → **312 断言 0 失败**（新增 10 条：uclamp 全局节点 + GPU 三节点）
+- 兼容：全部新字段默认 `-1` → 不写 `uro_tactics.conf` 时行为与 v0.35.0 一致
+
 ## v0.35.0（versionCode 3500）— 三簇独立夹频（per-cluster）+ 对照组 B
 - **per-cluster 上限**：`maxFreqK`（policy0 / 小核）+ 新增 `maxFreqK3`（中核 4 核）、
   `maxFreqK7`（大核 X3）；三簇各自独立，统一由 `cpuClamp` 总开关控制；`-1` = 回基线

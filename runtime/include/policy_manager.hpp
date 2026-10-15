@@ -32,6 +32,12 @@ struct ScenarioTactics {
     int maxFreqK3 = -1;      // v0.35 per-cluster 上限：policy3
     int maxFreqK7 = -1;      // v0.35 per-cluster 上限：policy7
     int uagSoftLimitK = -1;  // v0.33第6批 uag/soft_limit_freq（软上限）
+    int gpuThermalPwr = -1;  // v0.36 kgsl thermal_pwrlevel
+    int gpuMinClkMhz = -1;   // v0.36 kgsl min_clock_mhz
+    int gpuMaxClkMhz = -1;   // v0.36 kgsl max_clock_mhz
+    int uclampMin = -1;      // v0.36 sched_util_clamp_min（0..1024）
+    int uclampMax = -1;      // v0.36 sched_util_clamp_max（0..1024）
+    int uclampRt = -1;       // v0.36 sched_util_clamp_min_rt_default（0..1024）
     int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
     int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）
     int keepAliveAdj = -1;   // keepAlive.adj 档位（-1=不动）   // GPU idle_timer（0=不动；v0.22 GpuController）
@@ -106,6 +112,12 @@ public:
             else if (k == "gpuForceBus")   t.gpuForceBus = (int)n;
             else if (k == "cpuMinK")       t.cpuMinFreqK = (int)n;
             else if (k == "uagSoftK")      t.uagSoftLimitK = (int)n;
+            else if (k == "gpuThermalPwr") t.gpuThermalPwr = (int)n;
+            else if (k == "gpuMinClkMhz")  t.gpuMinClkMhz = (int)n;
+            else if (k == "gpuMaxClkMhz")  t.gpuMaxClkMhz = (int)n;
+            else if (k == "uclampMin")     t.uclampMin = (int)n;
+            else if (k == "uclampMax")     t.uclampMax = (int)n;
+            else if (k == "uclampRt")      t.uclampRt = (int)n;
             else if (k == "keepAdj")       t.keepAliveAdj = (int)n;
             else if (k == "cpuClamp")      t.cpuClamp = (n != 0);
             else if (k == "maxFreqK")      t.maxFreqKhz = (int)n;

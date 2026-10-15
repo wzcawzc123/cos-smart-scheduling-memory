@@ -312,6 +312,12 @@ int main(int argc, char** argv) {
         base.cpu.maxFreq7 = dec.tactics.cpuClamp ? dec.tactics.maxFreqK7 : -1;
         base.cpu.minFreq = dec.tactics.cpuMinFreqK;      // v0.33 第6批：CPU 下限 + uag 软上限
         base.cpu.uagSoftLimitK = dec.tactics.uagSoftLimitK;
+        base.cpu.uclampMin = dec.tactics.uclampMin;      // v0.36 uclamp
+        base.cpu.uclampMax = dec.tactics.uclampMax;
+        base.cpu.uclampRt = dec.tactics.uclampRt;
+        base.gpu.thermalPwr = dec.tactics.gpuThermalPwr; // v0.36 GPU 补全
+        base.gpu.minClkMhz = dec.tactics.gpuMinClkMhz;
+        base.gpu.maxClkMhz = dec.tactics.gpuMaxClkMhz;
         base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
         base.cpu.uagTargetLoadsFirst = dec.tactics.uagTargetLoadsFirst;   // v0.26 多段首段
         base.memory.keepAliveAdj = dec.tactics.keepAliveAdj;   // v0.28 KEEPADJ(COSMemory keepAlive.adj)
