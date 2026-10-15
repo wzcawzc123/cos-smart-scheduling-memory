@@ -274,6 +274,45 @@ int main() {
         fs::remove_all(root);
     }
 
+    // ---------- M. v0.34 手动档位（WebUI 切换）----------
+    {
+        PolicyManager pm;
+        Decision d = pm.decide(st_with("com.tencent.mm", true),
+                               mk(EventType::ConfigChanged, "tick"), 600000);
+        CHECK(d.scenario == Scenario::BALANCE, "M1 AUTO 时正常自动判定");
+
+        pm.set_manual_scenario(Scenario::PERFORMANCE);
+        d = pm.decide(st_with("com.tencent.mm", false),
+                      mk(EventType::ScreenChanged, "off"), 600000);
+        CHECK(d.scenario == Scenario::PERFORMANCE, "M2 手动强制 PERFORMANCE（熄屏不回落）");
+        CHECK(d.why.find("manual") != std::string::npos, "M3 why 标注 manual");
+
+        pm.set_manual_scenario(Scenario::FAST);
+        d = pm.decide(st_with("com.tencent.mm", true),
+                      mk(EventType::ConfigChanged, "tick"), 610000);
+        CHECK(d.scenario == Scenario::FAST, "M4 手动切 FAST");
+
+        pm.set_manual_scenario(std::nullopt);
+        d = pm.decide(st_with("com.tencent.mm", false),
+                      mk(EventType::ConfigChanged, "tick"), 700000);
+        CHECK(d.scenario == Scenario::POWER_SAVE, "M5 回 AUTO -> 熄屏 POWER_SAVE");
+    }
+    // GAME 让权优先于手动档（§5.5 铁律）
+    {
+        std::string dir = "/tmp/uro_manual_" + std::to_string((int)getpid());
+        fs::create_directories(dir);
+        std::string list = dir + "/game_apps.txt";
+        { std::ofstream f(list); f << "com.tencent.tmgp.sgame\n"; }
+        PolicyManager pm;
+        pm.set_game_list_path(list);
+        pm.set_manual_scenario(Scenario::PERFORMANCE);
+        Decision d = pm.decide(st_with("com.tencent.tmgp.sgame", true),
+                               mk(EventType::ForegroundChanged, "com.tencent.tmgp.sgame"), 600000);
+        CHECK(d.scenario == Scenario::GAME, "M6 GAME 让权优先于手动档");
+        CHECK(d.tactics.handover, "M7 GAME -> handover 保持");
+        fs::remove_all(dir);
+    }
+
     std::printf("结果: %d passed, %d failed\n", pass, fail);
     return fail ? 1 : 0;
 }

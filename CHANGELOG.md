@@ -3,6 +3,20 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.34.0（versionCode 3400）— 手动档位（WebUI 可切）+ 退出诊断
+- **手动档位**：WebUI 新增「运行档位」卡片，五档可选：自动 / 省电 / 均衡 / 性能 / 极速
+  · 落盘 `/sdcard/Android/UnifiedRootOptimizer/manual_mode.txt`，**改即热生效**（mtime 热重载，与配方同机制）
+  · 安全设计：手动档**只覆盖"场景判定"这一步**——温度夹档、电量守卫等安全阀仍然生效；
+    **游戏让权优先**（§5.5 铁律不破：自动判定为 GAME 时手动档不生效）
+  · 重启后保留（文件存盘）；切回「自动」即恢复自适应
+  · 总闸（BRIDGE_ENFORCE）关闭时按钮禁用并提示，避免误判
+- **退出信号诊断**：`on_stop` 记录收到信号号（SIGHUP=1 / SIGINT=2 / SIGTERM=15），
+  写入 `events.log`（`UroExitBySignal sig=N`）+ stderr
+  · 背景：体检发现两天累计 46 次优雅退出；已排除模块脚本 kill、COSMemory（用 am kill）、OOM；
+    多数经核实为**设备重启后 watchdog 正常补拉**，剩余两段（10-13 18:24/19:39）待信号号定位
+- 测试：288 → **295 断言 0 失败**（新增 7 条手动档用例：强制/回落/why 标注/游戏让权优先）
+- 兼容：无 `manual_mode.txt` 时行为与 v0.33.1 完全一致
+
 ## v0.33.1（versionCode 3301）— 熄屏识别修复（省电档复活）
 - **根因**：`screen_driver` 启动时 `__system_property_find("debug.tracing.screen_state")`
   失败即**永久挂起** → 熄屏永不识别 → POWER_SAVE 永不触发

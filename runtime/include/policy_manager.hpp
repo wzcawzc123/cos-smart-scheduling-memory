@@ -14,6 +14,7 @@
 #include <sstream>
 #include <map>
 #include <cstdlib>
+#include <optional>
 
 namespace uro {
 
@@ -70,6 +71,12 @@ public:
         ovr_ = std::move(m);
     }
     size_t tactics_override_scenarios() const { return ovr_.size(); }
+
+    // ---- v0.34 手动档位（WebUI 切换）----
+    // nullopt = AUTO（自动判定）；有值 = 强制该场景。
+    // 注意：安全阀（滞回/电量守卫/热夹档）仍然生效——手动只覆盖"场景判定"这一步。
+    void set_manual_scenario(std::optional<Scenario> s) { manual_ = s; }
+    std::optional<Scenario> manual_scenario() const { return manual_; }
 
     void apply_tactics_override(ScenarioTactics& t, Scenario s) const {
         auto it = ovr_.find(s);
@@ -160,6 +167,14 @@ public:
         if (e.type == EventType::ForegroundChanged) lastSwitchMs_ = now_ms;
         Scenario cand = pick_scenario(st, e, now_ms);
 
+        // v0.34 手动档（WebUI 切换）：非 AUTO 时强制该场景。
+        // 只覆盖"场景判定"这一步——下面的滞回/电量守卫/热夹档等安全阀仍然生效（安全优先）。
+        // 游戏让权优先（§5.5）：自动判定为 GAME 时手动档不生效
+        if (manual_ && cand != Scenario::GAME) {
+            cand = *manual_;
+            why_ = std::string("manual:") + scenario_name(*manual_);
+        }
+
         // --- 滞回（防震荡）：压力场景退出需要持续无压力达 hysteresisMs ---
         if (cand == Scenario::MEMORY_PRESSURE && lastPressureMs_ &&
             now_ms - lastPressureMs_ > hysteresisMs_) {
@@ -243,7 +258,7 @@ public:
 
 private:
     Scenario pick_scenario(const GlobalState& st, const Event& e, uint64_t now_ms) {
-        // GAME 最高优先（§5.5 全量让权）：前台在游戏名单内即让权。
+        // 游戏让权优先（§5.5）：自动判定为 GAME 时手动档不生效
         // 仅亮屏时成立——熄屏时"在玩游戏"无意义，交由下面的省电分支接管
         // （挂机游戏进程在前台不会被回收杀掉，freeze 只冻结后台，安全）。
         if (st.screenOn && is_game(st.foregroundPackage)) {
@@ -398,6 +413,7 @@ private:
 
     // ---- 场景配方覆盖（v0.33 参数外置）：场景 → 字段名 → 原样值 ----
     std::map<Scenario, std::map<std::string, std::string>> ovr_;
+    std::optional<Scenario> manual_;   // v0.34 manual scenario (nullopt = AUTO)
 
     std::string gameListPath_;
     bool thermalCapped_ = false;

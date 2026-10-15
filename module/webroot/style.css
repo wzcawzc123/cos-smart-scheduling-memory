@@ -255,3 +255,11 @@ code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
 .pf-gen-hd{font-size:11.5px; color:var(--ink2); margin-bottom:6px;}
 .pf-gen-item{display:block; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; word-break:break-all;}
 .pf-dim{color:var(--ink3); font-size:11.5px; line-height:1.5;}
+
+/* v0.34 档位按钮 */
+.modebtn{flex:1 1 60px; min-width:60px; padding:10px 12px; border-radius:14px; border:1px solid var(--line);
+  background:var(--fill); color:var(--ink2); font-size:14px; font-weight:600; cursor:pointer;
+  transition:transform .12s ease, background .2s ease, color .2s ease;}
+.modebtn:active{transform:scale(.96);}
+.modebtn.on{background:var(--ink); color:var(--bg); border-color:var(--ink);}
+.modebtn:disabled{opacity:.45; cursor:default;}

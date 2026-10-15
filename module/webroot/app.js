@@ -114,6 +114,14 @@
     BOOT: { l: '开机', c: 'grey', v: '--ink3' }
   };
   function scen(k) { return SCEN[k] || { l: k || '未知', c: 'grey', v: '--ink3' }; }
+  // v0.34 手动档位（与后端 manual_mode.txt 对应）
+  var MODES = [
+    { k: 'AUTO', l: '自动' },
+    { k: 'POWER_SAVE', l: '省电' },
+    { k: 'BALANCE', l: '均衡' },
+    { k: 'PERFORMANCE', l: '性能' },
+    { k: 'FAST', l: '极速' }
+  ];
   function fmtDur(ms) {
     var s = Math.max(0, Math.floor(ms / 1000));
     if (s < 60) return s + 's';
@@ -398,12 +406,14 @@
       var sparks = R({ temp: { xs: [], v: [], last: null }, jank: { xs: [], v: [], last: null }, mem: { xs: [], v: [], last: null } });
       function loadStatus() {
         return Promise.all([
-          rd(CMDT.prop), rd(CMDT.conf), rd(CMDT.bridge), rd(CMDT.cpus), sh(CMDT.hb), rd(CMDT.last), sh(CMDT.mode)
+          rd(CMDT.prop), rd(CMDT.conf), rd(CMDT.bridge), rd(CMDT.cpus), sh(CMDT.hb), rd(CMDT.last), sh(CMDT.mode),
+          rd('cat ' + URO + '/manual_mode.txt 2>/dev/null || echo AUTO')
         ]).then(function (r) {
           var prop = r[0] || '', conf = r[1] || '', bridge = r[2] || '', cpus = r[3] || '';
           var o = {
             ver: (prop.match(/^version=(.*)$/m) || [])[1] || '', desc: (prop.match(/^description=(.*)$/m) || [])[1] || '',
-            mode: (r[6] || '').trim(), enforce: /BRIDGE_ENFORCE=(\d)/.test(conf) ? RegExp.$1 === '1' : false,
+            mode: (r[6] || '').trim(),
+            manual: ((r[7] || 'AUTO').trim().toUpperCase() || 'AUTO'), enforce: /BRIDGE_ENFORCE=(\d)/.test(conf) ? RegExp.$1 === '1' : false,
             dirtyB: (bridge.match(/DIRTY=(\w+)/) || [])[1] || '?',
             dirtyC: (cpus.match(/DIRTY=(\w+)/) || [])[1] || '?',
             phase: (cpus.match(/PHASE=(\w+)/) || [])[1] || (bridge.match(/PHASE=(\w+)/) || [])[1] || '',
@@ -608,6 +618,12 @@
           .catch(function () { }).then(function () { busy.value = false; syncCharts(); });
       }
       var armT = null;
+      function setManual(k) {
+        busy.value = true;
+        sh('echo ' + k + ' > ' + URO + '/manual_mode.txt').then(function () {
+          return loadStatus();
+        }).then(function () { busy.value = false; setTimeout(loadStatus, 500); });
+      }
       function toggleEnforce() {
         if (!st.value.enforce && !armT) {           // 两击确认（关→开才需要确认）
           armT = setTimeout(function () { armT = null; loadStatus(); }, 2500);
@@ -786,7 +802,7 @@
         st: st, subline: subline, curScen: curScen, lamps: lamps, health: health, uagRows: uagRows,
         sparks: sparks, trend: trend, win: win, setWin: setWin, trendEmpty: trendEmpty,
         ev: ev, band: band, threadGroups: threadGroups,
-        refreshAll: refreshAll, toggleEnforce: toggleEnforce,
+        refreshAll: refreshAll, toggleEnforce: toggleEnforce, setManual: setManual, MODES: MODES,
         scenOf: scen, nf: nf, fmtAgo: fmtAgo, fmtDur: fmtDur, pctOf: pctOf,
         sinceText: sinceText, WINLIST: WINLIST, lastOf: lastOf, pct1: pct1, clock: clock,
         paths: { log: LOG, module: MOD, profile: PROF, appopt: APPOPT }

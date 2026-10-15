@@ -7,6 +7,7 @@
 #include "policy_manager.hpp"
 #include "tactics_conf.hpp"
 #include <csignal>
+#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -18,7 +19,8 @@
 using namespace uro;
 
 static std::atomic<bool> g_run{true};
-static void on_stop(int) { g_run = false; }
+static int g_stopSig = 0;   // v0.34 诊断：记录退出信号
+static void on_stop(int sig) { g_stopSig = sig; g_run = false; }
 
 // 事件日志：单文件 10MB 上限，滚动一次（P1-04 契约）
 class EventLog {
@@ -225,6 +227,29 @@ int main(int argc, char** argv) {
     };
     reload_tactics(true);
 
+    // ---- v0.34 手动档位（WebUI 切换）：manual_mode.txt 改即热生效 ----
+    const std::string kManualMode = "/sdcard/Android/UnifiedRootOptimizer/manual_mode.txt";
+    long lastManualMt = -2;
+    auto reload_manual = [&](bool force) {
+        struct stat stt{};
+        long mt = (stat(kManualMode.c_str(), &stt) == 0) ? (long)stt.st_mtime : -1;
+        if (!force && mt == lastManualMt) return;
+        lastManualMt = mt;
+        if (mt < 0) { pm.set_manual_scenario(std::nullopt); return; }
+        std::ifstream mf(kManualMode);
+        std::string raw, s;
+        std::getline(mf, raw);
+        for (char c : raw) { if (!isspace((unsigned char)c)) s += (char)toupper((unsigned char)c); }
+        std::optional<Scenario> sel;
+        if (s == "POWER_SAVE" || s == "POWERSAVE") sel = Scenario::POWER_SAVE;
+        else if (s == "BALANCE")                    sel = Scenario::BALANCE;
+        else if (s == "PERFORMANCE")                sel = Scenario::PERFORMANCE;
+        else if (s == "FAST")                       sel = Scenario::FAST;
+        pm.set_manual_scenario(sel);
+        elog.line(std::string("ManualMode ") + (sel ? scenario_name(*sel) : "AUTO"));
+    };
+    reload_manual(true);
+
     std::thread t1(fg_driver, std::ref(q), p, fg, std::ref(g_run));
     std::thread t5(focus_driver, std::ref(q), p, fg, std::ref(g_run));
     // v0.11 四档自治：mode_config_driver 停用——不再读系统 mode.txt（省电/高性能设置
@@ -391,7 +416,8 @@ int main(int argc, char** argv) {
 
     while (g_run) {
         if (!q.pop(e, 500)) {
-            reload_tactics(false);   // v0.33：配方文件 mtime 变化才重解析（stat 一次/500ms，可忽略）
+            reload_tactics(false);
+            reload_manual(false);    // v0.34   // v0.33：配方文件 mtime 变化才重解析（stat 一次/500ms，可忽略）
             // 空闲 tick：租约到期判断 + Touch 档位回落重判（读时钟，非写入轮询；§4.4 TTL 回落）
             if (pm.lease_expired(now_ms())) {
                 pm.set_pressure_time(0);            // 压力租约过期 → 清压力态
@@ -436,6 +462,10 @@ int main(int argc, char** argv) {
     t1.join(); t5.join(); t3.join(); t4.join(); t6.join(); t7.join(); t8.join();   // t2(mode driver) 已于 v0.11 停用
     fprintf(stderr, "[URO-M2′] stopped. final gen=%llu fg=%s mode=%s\n",
             (unsigned long long)st.generation, st.foregroundPackage.c_str(), st.mode.c_str());
+    if (g_stopSig) {
+        fprintf(stderr, "[URO-M2′] exit-by-signal %d (SIGHUP=1/SIGINT=2/SIGTERM=15)\n", g_stopSig);
+        elog.line("UroExitBySignal sig=" + std::to_string(g_stopSig));
+    }
     for (size_t i = 0; i < reg.size(); ++i)
         fprintf(stderr, "[URO-M2′] final: %s\n", reg.at(i).status().c_str());
     return 0;
