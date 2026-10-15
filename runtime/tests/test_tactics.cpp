@@ -239,6 +239,23 @@ int main() {
         CHECK(rfile(base + "/policy0/scaling_min_freq") == "672000", "K7 min_freq 回基线");
         CHECK(rfile(base + "/policy0/uag/soft_limit_freq") == "2016000", "K8 soft_limit 回基线");
         CHECK(rfile(base + "/policy7/uag/soft_limit_freq") == "2016000", "K9 soft_limit policy7 回基线");
+
+        // v0.35 per-cluster 上限：三簇独立（对照组 B 的映射值）
+        EffectivePolicy eff3;
+        eff3.cpu.maxFreq  = 1228800;
+        eff3.cpu.maxFreq3 = 1401600;
+        eff3.cpu.maxFreq7 = 1708800;
+        cpu->apply(eff3, ad, false);
+        CHECK(rfile(base + "/policy0/scaling_max_freq") == "1228800", "K10 per-cluster policy0");
+        CHECK(rfile(base + "/policy3/scaling_max_freq") == "1401600", "K11 per-cluster policy3");
+        CHECK(rfile(base + "/policy7/scaling_max_freq") == "1708800", "K12 per-cluster policy7");
+        cpu->apply(eff3, ad, false);
+        CHECK(rfile(base + "/policy3/scaling_max_freq") == "1401600", "K13 同值幂等");
+        EffectivePolicy eff4;
+        cpu->apply(eff4, ad, false);
+        CHECK(rfile(base + "/policy0/scaling_max_freq") == "2016000", "K14 回基线 policy0");
+        CHECK(rfile(base + "/policy3/scaling_max_freq") == "2016000", "K15 回基线 policy3");
+        CHECK(rfile(base + "/policy7/scaling_max_freq") == "2016000", "K16 回基线 policy7");
         fs::remove_all(root);
     }
 

@@ -68,6 +68,8 @@ inline const FieldSpec* field_specs(size_t& n) {
         {"keepAdj",   -1, 1000,   false, false},
         {"cpuClamp",  0, 1,       true,  false},
         {"maxFreqK",  -1, 4000000,false, false},
+        {"maxFreqK3", -1, 4000000,false, false},
+        {"maxFreqK7", -1, 4000000,false, false},
         {"handover",  0, 1,       true,  false},
     };
     n = sizeof(kSpecs) / sizeof(kSpecs[0]);
@@ -143,7 +145,8 @@ inline TacticsConf parse_tactics_conf(const std::string& text) {
                 }
             }
             long n = std::atol(v.c_str());
-            if (k == "maxFreqK" || k == "cpuMinK" || k == "uagSoftK") {
+            if (k == "maxFreqK" || k == "maxFreqK3" || k == "maxFreqK7" ||
+                k == "cpuMinK" || k == "uagSoftK") {
                 if (n != -1 && n < 300000) {
                     r.error = k + " 越界(-1 或 >=300000): " + v; r.errorLine = ln; return r;
                 }

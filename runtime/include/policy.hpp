@@ -27,7 +27,9 @@ struct MemoryPolicy {
 struct CpuPolicy {
     std::string governor;          // 空 = 不干预（本机 uag 默认不切换）
     int minFreq = -1;              // -1 = 不约束
-    int maxFreq = -1;              // -1 = 不约束
+    int maxFreq = -1;              // -1 = 不约束（policy0 / 小核）
+    int maxFreq3 = -1;             // v0.35 per-cluster：policy3（中核 4 核）
+    int maxFreq7 = -1;             // v0.35 per-cluster：policy7（大核 X3）
     std::vector<int> onlineCores;  // 空 = 不干预
     std::string cpusetProfile;     // 空 = 不干预
     bool launchBoost = false;

@@ -545,14 +545,10 @@ public:
     CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun) override {
         CtrlReport r{CtrlState::Active, ""};
         std::string detail;
-        WriteOutcome o = WriteOutcome::DryRun;
-        if (eff.cpu.maxFreq > 0) {
-            o = ad.write("/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq",
-                         std::to_string(eff.cpu.maxFreq), dryRun, &detail);
-        }
         // readback mismatch 在本机是已知常态（Oplus ~6s 动态钳制，M0 能力矩阵实测）
-        r.detail = std::string("gov=") + governor_ + " maxWrite=" + outcome_name(o) +
-                   (detail.empty() ? "" : " (" + detail + ")") +
+        WriteOutcome o = WriteOutcome::DryRun;   // 保留：供下方降级判定（v0.35 起夹频走 scalar 组）
+        // v0.35：夹频改由下方 per-cluster scalar 组统一处理（policy0/3/7 独立）
+        r.detail = std::string("gov=") + governor_ +
                    (cpusetOk_ ? "" : " cpuset=SKIP");
 
         // ---- uag up/down_rate_limit（阶段B-CPU + 阶段2）：-1=回基线，否则写场景值 ----
@@ -623,6 +619,9 @@ public:
         ensureScalars(ad);
         {
             std::string d;
+            applyScalar(ad, eff.cpu.maxFreq,  "maxF0", dryRun, d);   // v0.35 per-cluster 上限
+            applyScalar(ad, eff.cpu.maxFreq3, "maxF3", dryRun, d);
+            applyScalar(ad, eff.cpu.maxFreq7, "maxF7", dryRun, d);
             applyScalar(ad, eff.cpu.minFreq, "minFreq", dryRun, d);
             applyScalar(ad, eff.cpu.uagSoftLimitK, "uagSoft", dryRun, d);
             if (!d.empty()) r.detail += " | " + d;
@@ -710,6 +709,8 @@ private:
             };
             add(base + "/scaling_min_freq", "minFreq");
             add(base + "/uag/soft_limit_freq", "uagSoft");
+            // v0.35 per-cluster 上限：policy0/3/7 各一个节点（tag maxF0/3/7）
+            add(base + "/scaling_max_freq", (std::string("maxF") + pol[6]).c_str());
         }
     }
 

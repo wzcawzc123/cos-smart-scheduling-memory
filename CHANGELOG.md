@@ -3,6 +3,19 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.35.0（versionCode 3500）— 三簇独立夹频（per-cluster）+ 对照组 B
+- **per-cluster 上限**：`maxFreqK`（policy0 / 小核）+ 新增 `maxFreqK3`（中核 4 核）、
+  `maxFreqK7`（大核 X3）；三簇各自独立，统一由 `cpuClamp` 总开关控制；`-1` = 回基线
+  · CpuController 改用 v0.33 引入的「独立标量组」机制统一处理（写入 / 回基线 / 幂等 / dry-run）
+  · 背景：此前夹频只写 policy0，导致"每簇独立上限"的方案（含所有同类项目的做法）无法落地
+- **对照组 B（NovaSched 映射）**：新增 `docs/对照组B_NovaSched参考_v1.md` +
+  `docs/对照组B_uro_tactics.conf`
+  · 参考同类项目 NovaSched Zen Edition（作者 **ZenJooo**，GPL-3.0）公开文档中的真机逐频点
+    方法论与 SM8650 四档实测值，映射到本机 SM8550 频点表（百分比 → 向下吸附真实频点）
+  · 三组 A/B 实验设计：A = 我们的默认；B = NovaSched 映射值；C = 自测功耗曲线推导值（待测）
+- 测试：295 → **302 断言 0 失败**（新增 7 条 per-cluster 用例：三簇独立写入/幂等/回基线）
+- 兼容：不写 `maxFreqK3/K7` 时行为与 v0.34.0 一致
+
 ## v0.34.0（versionCode 3400）— 手动档位（WebUI 可切）+ 退出诊断
 - **手动档位**：WebUI 新增「运行档位」卡片，五档可选：自动 / 省电 / 均衡 / 性能 / 极速
   · 落盘 `/sdcard/Android/UnifiedRootOptimizer/manual_mode.txt`，**改即热生效**（mtime 热重载，与配方同机制）

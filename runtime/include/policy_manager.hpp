@@ -29,6 +29,8 @@ struct ScenarioTactics {
     int gpuForceClk = -1;    // v0.33第6批 kgsl force_clk_on（0/1）
     int gpuForceBus = -1;    // v0.33第6批 kgsl force_bus_on（0/1）
     int cpuMinFreqK = -1;    // v0.33第6批 scaling_min_freq（-1=不干预/回基线）
+    int maxFreqK3 = -1;      // v0.35 per-cluster 上限：policy3
+    int maxFreqK7 = -1;      // v0.35 per-cluster 上限：policy7
     int uagSoftLimitK = -1;  // v0.33第6批 uag/soft_limit_freq（软上限）
     int uagHispeedLoad = -1;   // uag hispeed_load（-1=回基线）
     int uagTargetLoadsFirst = -1;   // uag target_loads 首段（-1=回基线）
@@ -107,6 +109,8 @@ public:
             else if (k == "keepAdj")       t.keepAliveAdj = (int)n;
             else if (k == "cpuClamp")      t.cpuClamp = (n != 0);
             else if (k == "maxFreqK")      t.maxFreqKhz = (int)n;
+            else if (k == "maxFreqK3")     t.maxFreqK3 = (int)n;
+            else if (k == "maxFreqK7")     t.maxFreqK7 = (int)n;
             else if (k == "handover")      t.handover = (n != 0);
         }
     }

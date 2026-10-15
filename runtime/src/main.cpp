@@ -308,6 +308,8 @@ int main(int argc, char** argv) {
         base.gpu.minBw = dec.tactics.gpuMinBw;
         base.gpu.forceClk = dec.tactics.gpuForceClk;
         base.gpu.forceBus = dec.tactics.gpuForceBus;
+        base.cpu.maxFreq3 = dec.tactics.cpuClamp ? dec.tactics.maxFreqK3 : -1;   // v0.35 per-cluster（cpuClamp 统一开关）
+        base.cpu.maxFreq7 = dec.tactics.cpuClamp ? dec.tactics.maxFreqK7 : -1;
         base.cpu.minFreq = dec.tactics.cpuMinFreqK;      // v0.33 第6批：CPU 下限 + uag 软上限
         base.cpu.uagSoftLimitK = dec.tactics.uagSoftLimitK;
         base.cpu.uagHispeedLoad = dec.tactics.uagHispeedLoad;   // v0.25 uag 升频阈值
