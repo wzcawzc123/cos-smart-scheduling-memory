@@ -619,8 +619,8 @@
           .catch(function () { }).then(function () { busy.value = false; syncCharts(); });
       }
       var armT = null;
-      var tacticsText = ref('');
-      var tacticsHint = ref('');
+      var tacticsText = R('');
+      var tacticsHint = R('');
       function loadTactics() {
         return rd('cat ' + URO + '/uro_tactics.conf 2>/dev/null').then(function (b) {   // rd 内部已 base64
           tacticsText.value = b || '';
@@ -831,4 +831,5 @@
     }
   });
   app.mount('#app');
+  var __boot = document.getElementById('boot'); if (__boot && __boot.parentNode) __boot.parentNode.removeChild(__boot);
 })();

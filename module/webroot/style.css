@@ -272,3 +272,13 @@ code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
   font-size:13px; font-weight:600; cursor:pointer;}
 .btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink);}
 .btn:disabled{opacity:.45; cursor:default;}
+
+/* 启动骨架屏：避免 Vue 挂载前露出未渲染模板 */
+#boot{padding:26px 22px;display:flex;flex-direction:column;gap:18px}
+#boot .boot-hd{display:flex;justify-content:space-between;align-items:flex-start}
+#boot .boot-t{font-size:32px;font-weight:800;letter-spacing:-.5px;color:var(--ink)}
+#boot .boot-s{font-size:13.5px;color:var(--ink2);margin-top:3px}
+#boot .boot-cards{display:flex;flex-direction:column;gap:18px}
+#boot .boot-card{background:var(--card);border-radius:26px;height:118px;animation:bootpulse 1.2s ease-in-out infinite}
+#boot .boot-card.s{height:62px}
+@keyframes bootpulse{0%,100%{opacity:1}50%{opacity:.45}}
