@@ -4,7 +4,7 @@
 用法: python3 runtime/tools/pack_module.py [输出路径]
 默认: dist/uro-<version>.zip
 """
-import sys, zipfile, pathlib, re
+import sys, zipfile, pathlib, re, hashlib, subprocess, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]   # tools -> runtime -> 仓库根
 MOD = ROOT / "module"
@@ -66,5 +66,28 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for n in ("service.sh", "uninstall.sh", "bin/URORuntime"):
         i = z.getinfo(n)
         i.external_attr = 0o755 << 16
+
+    # v0.41（审查 F-12）：发布包内记录可复现信息（commit / 工具链 / 二进制哈希）
+    def _sha256(fp):
+        h = hashlib.sha256()
+        with open(fp, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    try:
+        commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+                                         text=True).strip()
+    except Exception:
+        commit = "unknown"
+    info = [
+        f"version={version}",
+        f"git_commit={commit}",
+        f"build_utc={datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        "toolchain=NDK 26.3.11579264 (clang, aarch64, android-29)",
+        f"binary_sha256={_sha256(BIN)}",
+        f"cosmemory={cm.name if cm else 'none'}",
+        f"appopt={ap.name if ap else 'none'}",
+    ]
+    z.writestr("build.info", "\n".join(info) + "\n")
 
 print(f"built {out} ({out.stat().st_size} bytes) {version}")

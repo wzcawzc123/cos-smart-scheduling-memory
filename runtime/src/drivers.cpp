@@ -18,9 +18,12 @@
 namespace uro {
 
 uint64_t now_ms() {
-    struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+    // v0.41（审查 F-07）：进程内所有"时长/间隔/租约/去抖"都用单调时钟，
+    // 避免校时/改时区导致冷却与租约计算出错。日志展示时间单独用 wall_s()。
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
+uint64_t wall_s() { return (uint64_t)::time(nullptr); }
 
 static std::string read_all(const std::string& path) {
     std::ifstream f(path); std::string s;

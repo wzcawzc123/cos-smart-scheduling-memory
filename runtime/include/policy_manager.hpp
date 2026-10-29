@@ -58,6 +58,26 @@ struct ScenarioTactics {
     int  topCpusMask = -1;        // top-app 组允许的 CPU（-1 不干预）
 };
 
+// v0.41（审查 F-01）：完整策略指纹。
+// Decision.changed 过去只比较 9 个字段，导致"只改了 uclamp/GPU/线程/cpuset 等字段"
+// 时热重载读到了新配置却不重新下发。这里把 ScenarioTactics 所有会影响执行的字段
+// 拼成稳定指纹，changed 判定改用指纹比较（新增字段必须同步加进本函数）。
+inline std::string tactics_fingerprint(const ScenarioTactics& t) {
+    std::ostringstream o;
+    o << t.gpuIdleTimer << ',' << t.gpuPwrMin << ',' << t.gpuPwrMax << ',' << t.gpuBusSplit
+      << ',' << t.gpuDefPwr << ',' << t.gpuMinBw << ',' << t.gpuForceClk << ',' << t.gpuForceBus
+      << ',' << t.cpuMinFreqK << ',' << t.maxFreqK3 << ',' << t.maxFreqK7 << ',' << t.uagSoftLimitK
+      << ',' << t.gpuThermalPwr << ',' << t.gpuMinClkMhz << ',' << t.gpuMaxClkMhz
+      << ',' << t.uclampMin << ',' << t.uclampMax << ',' << t.uclampRt
+      << ',' << t.uagHispeedLoad << ',' << t.uagTargetLoadsFirst << ',' << t.keepAliveAdj
+      << ',' << (int)t.reclaimEnabled << ',' << (int)t.freezeEnabled << ',' << t.maxKillPerRound
+      << ',' << (int)t.cpuClamp << ',' << t.maxFreqKhz << ',' << (int)t.handover
+      << ',' << t.cooldownSec << ',' << t.uagUpRateUs << ',' << t.uagDownRateUs
+      << ',' << (int)t.threadPin << ',' << t.threadPinMask << ',' << t.bgCpusMask << ',' << t.topCpusMask
+      << '|' << t.depth;
+    return o.str();
+}
+
 // 策略决策输出
 struct Decision {
     Scenario scenario = Scenario::BALANCE;
@@ -243,21 +263,15 @@ public:
         apply_profile(d, st.foregroundPackage);   // App 画像：通配符覆盖（画像 > 档位 > 基线）
 
         // --- generation：实质变化才 +1（§4.4 单调，幂等重放不产生新代）---
+        // v0.41（审查 F-01）：改用完整策略指纹比较，任何影响执行的字段变化都会触发下发
         bool same = (cand == lastScenario_ &&
-                     d.tactics.reclaimEnabled == lastTactics_.reclaimEnabled &&
-                     d.tactics.freezeEnabled == lastTactics_.freezeEnabled &&
-                     d.tactics.maxKillPerRound == lastTactics_.maxKillPerRound &&
-                     d.tactics.handover == lastTactics_.handover &&
-                     d.tactics.maxFreqKhz == lastTactics_.maxFreqKhz &&
-                     d.tactics.depth == lastTactics_.depth &&
-                     d.tactics.cooldownSec == lastTactics_.cooldownSec &&
-                     d.tactics.uagUpRateUs == lastTactics_.uagUpRateUs &&
-                     d.tactics.uagDownRateUs == lastTactics_.uagDownRateUs);
+                     tactics_fingerprint(d.tactics) == lastTacticFp_);
         d.changed = !same;
         d.generation = same ? lastGen_ : lastGen_ + 1;
         if (d.changed) {
             lastScenario_ = cand;
             lastTactics_ = d.tactics;
+            lastTacticFp_ = tactics_fingerprint(d.tactics);
             lastGen_ = d.generation;
         }
 
@@ -448,6 +462,7 @@ private:
     std::string why_;
     Scenario lastScenario_ = Scenario::BOOT;
     ScenarioTactics lastTactics_{};
+    std::string lastTacticFp_;   // v0.41：上次下发策略的完整指纹（审查 F-01）
     uint64_t lastGen_ = 0;
     uint64_t lastPressureMs_ = 0;
     uint64_t lastTouchMs_ = 0;             // 最近触摸边沿时间（Touch→PERFORMANCE，1.5s 滞回）

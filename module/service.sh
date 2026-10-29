@@ -82,5 +82,10 @@ while :; do
     CRASH_N=0; CRASH_T0=0; lastStart=0
     echo "[$(date '+%F %T')] WATCHDOG stable (uptime>=180s), crash counter reset" >> "$LOG"
   fi
+  # v0.41（审查 F-05）：把恢复快照同步到模块目录，卸载时即便 /sdcard 不可用也能归还
+  mkdir -p "$MODDIR/state" 2>/dev/null
+  for f in bridge.state cpu.state; do
+    [ -f "$LOGDIR/$f" ] && cp -f "$LOGDIR/$f" "$MODDIR/state/$f" 2>/dev/null
+  done
   sleep 30
 done

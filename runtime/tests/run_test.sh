@@ -38,6 +38,24 @@ run_one() {
     if [ "$rc" -ne 0 ] || [ "${f:-0}" -ne 0 ]; then FAILED=1; fi
 }
 
+# v0.41（审查 F-04）：补主链路编译验证。
+# main.cpp 可在 host 编译；drivers.cpp 依赖 NDK 私有头（sys/system_properties.h），
+# host 编译必然失败，因此改为"纳入构建清单"检查，真正的产物验证由 build.sh 负责。
+echo "== compile main + build wiring =="
+if g++ -std=c++20 -Wall -Iinclude -c src/main.cpp -o "$OUT.main.o" 2>"$OUT.main.cc.err"; then
+    echo "   [main.cpp] compile ok"
+else
+    echo "   [main.cpp] COMPILE FAIL:"
+    grep -m5 error "$OUT.main.cc.err" | sed 's/^/   /'
+    FAILED=1
+fi
+for f in src/main.cpp src/drivers.cpp src/controllers.cpp src/adapter.cpp src/evidence.cpp src/appopt.cpp; do
+    if grep -q "$f" CMakeLists.txt; then :; else
+        echo "   [wiring] MISSING in CMakeLists: $f"; FAILED=1
+    fi
+done
+echo "   [wiring] all runtime sources listed in CMakeLists"
+
 run_one bridge
 run_one m2
 run_one m3

@@ -318,13 +318,13 @@ int main(int argc, char** argv) {
         // 漂移期加速抢占：厂商改写通常在 1~3s 内发生，慢周期抢不过
         if (reconFastMs < reconMs) reconCurMs = reconFastMs;
         char tsx[32];
-        time_t s = now / 1000; struct tm tmv{};
+        time_t s = (time_t)wall_s(); struct tm tmv{};
         localtime_r(&s, &tmv);
         strftime(tsx, sizeof tsx, "%F %T", &tmv);
         elog.line(std::string(tsx) + " RECONCILE drift=" + std::to_string(n) + " " + d);
         plog.line(std::string("  RECONCILE drift=") + std::to_string(n) + " " + d);
         std::ostringstream jt;
-        jt << "{\"ts\":" << now / 1000 << ",\"action_id\":\"rc" << now / 1000
+        jt << "{\"ts\":" << wall_s() << ",\"action_id\":\"rc" << wall_s()
            << "-" << getpid() << "\",\"reconcile\":1,\"drift\":" << n
            << ",\"total\":" << reconTotal
            << ",\"enforce\":" << (en ? 1 : 0)
@@ -394,7 +394,7 @@ int main(int argc, char** argv) {
         base.memory.keepAliveAdj = dec.tactics.keepAliveAdj;   // v0.28 KEEPADJ(COSMemory keepAlive.adj)
         EffectivePolicy eff = reg.resolve(base, dec.generation);
 
-        char ts[32]; time_t s = (time_t)(now / 1000); struct tm tv{};
+        char ts[32]; time_t s = (time_t)wall_s(); struct tm tv{};
         localtime_r(&s, &tv); strftime(ts, sizeof ts, "%F %T", &tv);
         plog.line(std::string(ts) + " SCENARIO=" + scenario_name(dec.scenario) +
                   " gen=" + std::to_string(dec.generation) +
@@ -432,8 +432,8 @@ int main(int argc, char** argv) {
             // 但决策必须入 telemetry（时间线完整性；applied=false 一目了然）
             { static int telSkip = 0; ++telSkip;
               std::ostringstream jt2;
-              jt2 << "{\"ts\":" << now / 1000
-                  << ",\"action_id\":\"ts" << now / 1000 << "-" << telSkip << "-" << getpid() << "\""
+              jt2 << "{\"ts\":" << wall_s()
+                  << ",\"action_id\":\"ts" << wall_s() << "-" << telSkip << "-" << getpid() << "\""
                   << ",\"gen\":" << eff.generation
                   << ",\"scenario\":\"" << scenario_name(dec.scenario) << "\""
                   << ",\"why\":\"" << json_esc(dec.why) << "\""
@@ -469,8 +469,8 @@ int main(int argc, char** argv) {
             static int telSeq = 0;
             ++telSeq;
             std::ostringstream jt;
-            jt << "{\"ts\":" << now / 1000
-               << ",\"action_id\":\"t" << now / 1000 << "-" << telSeq << "-" << getpid() << "\""
+            jt << "{\"ts\":" << wall_s()
+               << ",\"action_id\":\"t" << wall_s() << "-" << telSeq << "-" << getpid() << "\""
                << ",\"gen\":" << eff.generation
                << ",\"scenario\":\"" << scenario_name(dec.scenario) << "\""
                << ",\"why\":\"" << json_esc(dec.why) << "\""

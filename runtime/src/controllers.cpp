@@ -594,8 +594,14 @@ public:
                 }
                 std::string val = cpuset_str(mask);
                 if (val.empty()) return;
-                if (!dryRun) ad.write(gp, val, false, nullptr);
-                cpusetWrote_[group] = true;
+                if (!dryRun) {
+                    WriteOutcome o = ad.write(gp, val, false, nullptr);
+                    if (o != WriteOutcome::Ok) {
+                        r.detail += std::string(" ") + group + "=FAIL(" + outcome_name(o) + ")";
+                        return;
+                    }
+                    cpusetWrote_[group] = true;
+                }
                 r.detail += std::string(" ") + group + "=" + val;
             };
             applyGroup("top-app", eff.cpu.cpusetTopMask);
@@ -797,12 +803,15 @@ private:
             if (w >= 0) {
                 if (n.wrote && w == n.last) continue;
                 if (dryRun) { d += std::string(tag) + "=dry "; continue; }
-                ad.write(n.path, std::to_string(w), false, nullptr);
+                // v0.41（审查 F-03）：只有写入+回读成功才记为已应用
+                WriteOutcome o = ad.write(n.path, std::to_string(w), false, nullptr);
+                if (o != WriteOutcome::Ok) { d += n.tag + "=FAIL(" + outcome_name(o) + ") "; continue; }
                 n.wrote = true; n.last = w;
                 d += n.tag + "=" + std::to_string(w) + " ";
             } else if (n.wrote) {
                 if (dryRun) { d += std::string(tag) + "=drybase "; continue; }
-                ad.write(n.path, std::to_string(n.base), false, nullptr);
+                WriteOutcome o = ad.write(n.path, std::to_string(n.base), false, nullptr);
+                if (o != WriteOutcome::Ok) { d += n.tag + "=RBFAIL(" + outcome_name(o) + ") "; continue; }
                 n.wrote = false; n.last = n.base;
                 d += n.tag + "=base(" + std::to_string(n.base) + ") ";
             }
@@ -867,13 +876,14 @@ private:
 
     // v0.40：cpuset 写入是粘滞的（进程退出不会自动还原）→ 退出时归还基线
     void shutdown() override {
+        SysfsAdapter ad;   // 真实根路径：退出阶段仍需可验证的写入
         for (auto& kv : cpusetWrote_) {
             if (!kv.second) continue;
             auto b = cpusetBase_.find(kv.first);
             if (b == cpusetBase_.end() || b->second.empty()) continue;
-            std::ofstream f(std::string("/dev/cpuset/") + kv.first + "/cpus");
-            if (f.is_open()) f << b->second;
-            kv.second = false;
+            std::string gp = std::string("/dev/cpuset/") + kv.first + "/cpus";
+            // v0.41（审查 F-06）：只有写入且回读一致才清除 dirty，失败保留待重试
+            if (ad.write(gp, b->second, false, nullptr) == WriteOutcome::Ok) kv.second = false;
         }
     }
 };
@@ -954,12 +964,21 @@ private:
         if (want >= 0) {
             if (wrote && want == last) return;
             if (dryRun) { d += std::string(tag) + "=dry(" + std::to_string(want) + ") "; return; }
-            ad.write(path, std::to_string(want), false, nullptr);
+            // v0.41（审查 F-03）：写入/回读失败不得记为已应用，否则回滚会按假状态覆盖外部值
+            WriteOutcome o = ad.write(path, std::to_string(want), false, nullptr);
+            if (o != WriteOutcome::Ok) {
+                d += std::string(tag) + "=FAIL(" + outcome_name(o) + ") ";
+                return;
+            }
             wrote = true; last = want;
             d += std::string(tag) + "=" + std::to_string(want) + " ";
         } else if (wrote) {
             if (dryRun) { d += std::string(tag) + "=dry(base" + std::to_string(base) + ") "; return; }
-            ad.write(path, std::to_string(base), false, nullptr);
+            WriteOutcome o = ad.write(path, std::to_string(base), false, nullptr);
+            if (o != WriteOutcome::Ok) {   // 恢复失败：保留 dirty 供下次重试
+                d += std::string(tag) + "=RBFAIL(" + outcome_name(o) + ") ";
+                return;
+            }
             wrote = false; last = base;
             d += std::string(tag) + "=base(" + std::to_string(base) + ") ";
         }
@@ -1063,55 +1082,76 @@ public:
     CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun) override {
         int mask = want_mask(eff);
         if (mask == 0) {
-            // 关掉配方必须解绑：sched_setaffinity 是粘滞状态，不解绑会一直限制前台线程
-            if (lastMask_ != 0 && !dryRun) { pin_now(all_mask()); lastMask_ = 0; }
-            return {CtrlState::Active, "thread=off"};
+            restore_all();   // v0.41（F-02）：按原始 mask 精确恢复，而非"全核"了事
+            return {CtrlState::Active, "thread=off restored=" + std::to_string(lastRestored_)};
         }
         if (dryRun) return {CtrlState::Active, "thread=DRY " + cpuset_str(mask)};
-        int n = pin_now(mask);
-        lastMask_ = mask;
+        curPkg_ = fg_ ? fg_->get() : std::string();
+        curMask_ = mask;
+        int n = pin_scan(mask);
         return {CtrlState::Active, "thread=" + cpuset_str(mask) + " pinned=" + std::to_string(n)};
     }
 
-    int reconcile(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun, std::string&) override {
+    // 线程会重建、App 会切换：借 reconcile 时钟增量校验；
+    // 前台包变化或每 6 轮做一次全量补绑（审查 F-09：避免每轮全量扫描）
+    int reconcile(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun, std::string& d) override {
         if (dryRun) return 0;
         int mask = want_mask(eff);
         if (mask == 0) {
-            if (lastMask_ != 0) { pin_now(all_mask()); lastMask_ = 0; }
+            if (!orig_.empty()) { restore_all(); d += "thread=restored "; }
+            curPkg_.clear(); curMask_ = 0;
             return 0;
         }
-        pin_now(mask);
-        lastMask_ = mask;
+        std::string pkg = fg_ ? fg_->get() : std::string();
+        bool pkgChanged = (pkg != curPkg_);
+        bool maskChanged = (mask != curMask_);
+        if (pkgChanged || maskChanged) {
+            restore_all();          // 先还原上一个包/上一个掩码的改动
+            curPkg_ = pkg;
+            curMask_ = mask;
+        }
+        if (++round_ % 6 == 0 || pkgChanged || maskChanged) pin_scan(mask);
+        else pin_check(mask);
         return 0;
     }
 
-    // 进程退出/被卸载前撤销绑定，避免"卸载后前台应用还钉在 3-7"
-    void shutdown() override {
-        if (lastMask_ != 0) { pin_now(all_mask()); lastMask_ = 0; }
-    }
+    // 进程退出/被卸载前按原始 mask 撤销全部改动
+    void shutdown() override { restore_all(); }
 
 private:
-    // 默认掩码 0xF8 = cpu3-7（避开小核 cpu0-2，降低 UI 卡顿）
     static int want_mask(const EffectivePolicy& eff) {
         if (!eff.cpu.threadPin) return 0;
         return eff.cpu.threadPinMask >= 0 ? eff.cpu.threadPinMask : 0xF8;
     }
-
-    // 全核掩码（解绑用）：按设备实际核数，避免给不存在的 CPU 设位（内核会 EINVAL）
-    static int all_mask() {
-        long n = sysconf(_SC_NPROCESSORS_CONF);
-        if (n <= 0) n = 8;
-        if (n > 31) n = 31;
-        return (int)((1u << n) - 1);
+    static int mask_to_int(const cpu_set_t& s) {
+        int m = 0;
+        for (int i = 0; i < 31; ++i) if (CPU_ISSET(i, &s)) m |= (1 << i);
+        return m;
+    }
+    static void int_to_mask(int m, cpu_set_t& s) {
+        CPU_ZERO(&s);
+        for (int i = 0; i < 31; ++i) if (m & (1 << i)) CPU_SET(i, &s);
+    }
+    static bool want_thread(pid_t tid, pid_t pid, const std::string& tdir, const std::string& name) {
+        if (tid == pid) return true;   // 主线程
+        std::string comm;
+        { std::ifstream f(tdir + "/" + name + "/comm"); std::getline(f, comm); }
+        return comm.find("RenderThread") != std::string::npos ||
+               comm.rfind("hwuiTask", 0) == 0 ||
+               comm.find("GLThread") != std::string::npos ||
+               comm.find("UnityMain") != std::string::npos;
     }
 
-    int pin_now(int mask) {
-        std::string pkg = fg_ ? fg_->get() : std::string();
-        if (pkg.empty()) return 0;
-        cpu_set_t set; CPU_ZERO(&set);
-        for (int i = 0; i < 32; ++i) if (mask & (1 << i)) CPU_SET(i, &set);
+    // 记录首次改动前的原始 mask（每个 TID 一条），供精确恢复
+    void note_orig(pid_t tid, int origMask) {
+        if (orig_.find(tid) == orig_.end()) orig_[tid] = origMask;
+    }
 
-        int pinned = 0;
+    int pin_scan(int mask) {
+        std::string pkg = curPkg_.empty() ? (fg_ ? fg_->get() : std::string()) : curPkg_;
+        if (pkg.empty()) return 0;
+        cpu_set_t want; int_to_mask(mask, want);
+        int n = 0;
         DIR* d = opendir("/proc");
         if (!d) return 0;
         struct dirent* e;
@@ -1119,7 +1159,6 @@ private:
             if (e->d_name[0] < '1' || e->d_name[0] > '9') continue;
             pid_t pid = (pid_t)atoi(e->d_name);
             std::string base = std::string("/proc/") + e->d_name;
-            // 只认主进程（cmdline 首段 == 包名），跳过 :push / :remote 之类子进程
             std::string cmd;
             { std::ifstream f(base + "/cmdline", std::ios::binary); std::getline(f, cmd, '\0'); }
             if (cmd != pkg) continue;
@@ -1130,28 +1169,55 @@ private:
             while ((te = readdir(td)) != nullptr) {
                 if (te->d_name[0] < '1' || te->d_name[0] > '9') continue;
                 pid_t tid = (pid_t)atoi(te->d_name);
-                bool want = (tid == pid);   // 主线程
-                if (!want) {
-                    std::string comm;
-                    { std::ifstream f(tdir + "/" + te->d_name + "/comm"); std::getline(f, comm); }
-                    want = comm.find("RenderThread") != std::string::npos ||
-                           comm.rfind("hwuiTask", 0) == 0 ||
-                           comm.find("GLThread") != std::string::npos ||
-                           comm.find("UnityMain") != std::string::npos;
-                }
-                if (!want) continue;
-                if (sched_setaffinity(tid, sizeof(set), &set) == 0) ++pinned;
+                std::string nm = te->d_name;
+                if (!want_thread(tid, pid, tdir, nm)) continue;
+                cpu_set_t cur;
+                if (sched_getaffinity(tid, sizeof(cur), &cur) != 0) continue;
+                int curm = mask_to_int(cur);
+                if (curm == mask) { note_orig(tid, curm); continue; }   // 已符合也登记，便于退出时还原
+                note_orig(tid, curm);
+                if (sched_setaffinity(tid, sizeof(want), &want) == 0) ++n;
             }
             closedir(td);
         }
         closedir(d);
-        return pinned;
+        return n;
+    }
+
+    // 增量校验：只处理已登记且仍存活的线程（不扫 /proc）
+    int pin_check(int mask) {
+        cpu_set_t want; int_to_mask(mask, want);
+        int n = 0;
+        for (auto it = orig_.begin(); it != orig_.end(); ) {
+            cpu_set_t cur;
+            if (sched_getaffinity(it->first, sizeof(cur), &cur) != 0) { it = orig_.erase(it); continue; }
+            if (mask_to_int(cur) != mask) {
+                if (sched_setaffinity(it->first, sizeof(want), &want) == 0) ++n;
+            }
+            ++it;
+        }
+        return n;
+    }
+
+    void restore_all() {
+        int restored = 0;
+        for (auto& kv : orig_) {
+            cpu_set_t s; int_to_mask(kv.second, s);
+            if (sched_setaffinity(kv.first, sizeof(s), &s) == 0) ++restored;
+        }
+        lastRestored_ = restored;
+        orig_.clear();
     }
 
     FgSharedPtr fg_;
-    int lastMask_ = 0;   // 当前绑定掩码（0 = 未绑）；用于 mask=0 / 退出时解绑
+    std::map<pid_t, int> orig_;   // tid → 首次改动前的 affinity 位图
+    std::string curPkg_;
+    int curMask_ = 0;
+    int round_ = 0;
+    int lastRestored_ = 0;
     CtrlReport r_{CtrlState::Probing, ""};
 };
+
 
 ControllerPtr make_thread_controller(FgSharedPtr fg) {
     return std::make_unique<ThreadController>(std::move(fg));

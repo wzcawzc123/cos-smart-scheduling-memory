@@ -88,5 +88,6 @@ int next_thermal_level(int prev, int t, int t1, int t2, int hyst, int trendDeg =
 void evidence_driver(const std::string& logdir, FgSharedPtr fg, EventQueue& q, std::atomic<bool>& run);
 
 uint64_t now_ms();
+uint64_t wall_s();   // v0.41：wall clock 秒（仅日志/展示用，不参与时长计算）
 
 } // namespace uro

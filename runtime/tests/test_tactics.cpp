@@ -361,6 +361,29 @@ int main() {
         fs::remove_all(dir);
     }
 
+    // v0.41（审查 F-01）：策略指纹必须覆盖所有会影响执行的字段，
+    // 否则热重载改了字段也判定"未变化"而不下发。
+    {
+        ScenarioTactics base;
+        const std::string f0 = tactics_fingerprint(base);
+        auto changed_by = [&](auto mut) {
+            ScenarioTactics t;
+            mut(t);
+            return tactics_fingerprint(t) != f0;
+        };
+        CHECK(changed_by([](ScenarioTactics& t){ t.threadPin = true; }), "fingerprint covers threadPin");
+        CHECK(changed_by([](ScenarioTactics& t){ t.threadPinMask = 0xF8; }), "fingerprint covers threadPinMask");
+        CHECK(changed_by([](ScenarioTactics& t){ t.bgCpusMask = 7; }), "fingerprint covers bgCpus");
+        CHECK(changed_by([](ScenarioTactics& t){ t.topCpusMask = 255; }), "fingerprint covers topCpus");
+        CHECK(changed_by([](ScenarioTactics& t){ t.uclampMax = 800; }), "fingerprint covers uclampMax");
+        CHECK(changed_by([](ScenarioTactics& t){ t.gpuPwrMin = 4; }), "fingerprint covers gpuPwrMin");
+        CHECK(changed_by([](ScenarioTactics& t){ t.maxFreqK7 = 2400000; }), "fingerprint covers maxFreqK7");
+        CHECK(changed_by([](ScenarioTactics& t){ t.keepAliveAdj = 250; }), "fingerprint covers keepAlive");
+        CHECK(changed_by([](ScenarioTactics& t){ t.depth = "service"; }), "fingerprint covers depth");
+        ScenarioTactics same;
+        CHECK(tactics_fingerprint(same) == f0, "fingerprint stable for identical tactics");
+    }
+
     std::printf("结果: %d passed, %d failed\n", pass, fail);
     return fail ? 1 : 0;
 }

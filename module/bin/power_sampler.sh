@@ -8,6 +8,11 @@ while true; do
     st=$(cat $P/status 2>/dev/null)
     ma=$(cat $P/current_now 2>/dev/null)
     ts=$(date +%s%3N 2>/dev/null || date +%s000)
+    # v0.41（审查 F-10）：1MB 轮转，避免长期运行无限增长
+    if [ -f "$L/power.jsonl" ]; then
+        sz=$(stat -c %s "$L/power.jsonl" 2>/dev/null || echo 0)
+        [ "$sz" -gt 1048576 ] && mv -f "$L/power.jsonl" "$L/power.jsonl.1"
+    fi
     [ -n "$pct" ] && echo "{\"ts\":$ts,\"pct\":$pct,\"chg\":\"$st\",\"mA\":$ma}" >> $L/power.jsonl
     sleep 60
 done
