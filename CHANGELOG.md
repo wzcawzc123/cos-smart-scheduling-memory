@@ -3,6 +3,19 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.41.1（versionCode 4101）— 发布包合规补齐（调度逻辑零改动）
+
+上一版检查发布包时发现三处"不是脏东西、而是缺东西"的问题，本版补齐：
+
+- **随包附 `LICENSE`（GPL-3.0 全文）与 `THIRD_PARTY_NOTICES.md`**：
+  GPL-3.0 分发二进制时必须随附许可证副本；内嵌的 COSMemory 包本来有 LICENSE/NOTICE，
+  主包反而没有，属遗漏。
+- **`build.info` 增加 `source=<commit 树地址>`**：解决"拿到包的人怎么拿到对应源码"的合规可及性。
+- **权限统一**：`customize.sh` / `bin/power_sampler.sh` 补 755；普通文件（含 `build.info`）统一 644
+  （原来 customize.sh 是 644、build.info 是 600）。
+
+二进制与 v0.41.0 完全一致（仅打包层变更）；本版不涉及任何调度逻辑。
+
 ## v0.41.0（versionCode 4100）— 按外部审查逐条核实并修复
 
 对第三方审查报告（v0.40.0，基于 commit `10d615c`）逐条核对源码后确认：

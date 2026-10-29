@@ -62,10 +62,13 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         print("WARN: 内嵌 AppOpt 包缺失 -> 联动降级")
     z.write(BIN, "bin/URORuntime")
     z.write(MOD / "bin" / "power_sampler.sh", "bin/power_sampler.sh")   # M5 电量补救采样
-    # 可执行权限位（KSU 解压后按此还原）
-    for n in ("service.sh", "uninstall.sh", "bin/URORuntime"):
-        i = z.getinfo(n)
-        i.external_attr = 0o755 << 16
+    # v0.41.1：随包附许可证与第三方声明（GPL-3.0 分发二进制需附许可证副本）
+    for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
+        f = ROOT / name
+        if f.is_file():
+            z.write(f, name)
+        else:
+            print(f"WARN: {name} 缺失 -> 合规材料不全")
 
     # v0.41（审查 F-12）：发布包内记录可复现信息（commit / 工具链 / 二进制哈希）
     def _sha256(fp):
@@ -82,6 +85,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     info = [
         f"version={version}",
         f"git_commit={commit}",
+        f"source=https://github.com/wzcawzc123/cos-smart-scheduling-memory/tree/{commit}",
         f"build_utc={datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "toolchain=NDK 26.3.11579264 (clang, aarch64, android-29)",
         f"binary_sha256={_sha256(BIN)}",
@@ -89,5 +93,13 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         f"appopt={ap.name if ap else 'none'}",
     ]
     z.writestr("build.info", "\n".join(info) + "\n")
+
+    # v0.41.1：权限统一 —— 脚本/二进制 755，其余（含 build.info）644
+    exec_names = {"service.sh", "uninstall.sh", "customize.sh",
+                  "bin/URORuntime", "bin/power_sampler.sh"}
+    for i in z.filelist:
+        if i.filename.endswith("/"):
+            continue
+        i.external_attr = (0o755 if i.filename in exec_names else 0o644) << 16
 
 print(f"built {out} ({out.stat().st_size} bytes) {version}")
