@@ -51,6 +51,11 @@ struct ScenarioTactics {
     int cooldownSec = -1;         // -1 = 不干预
     int uagUpRateUs = -1;         // -1 = 不干预（回基线）；CPU 侧升频延迟
     int uagDownRateUs = -1;       // -1 = 不干预（回基线）；CPU 侧降频迟滞（PERFORMANCE 档）
+    // v0.40 线程与分组（对齐 Uperf 的线程亲和 / 主流模块的 cpuset 管理）
+    bool threadPin = false;       // 是否把前台 UI/Render 线程绑到非小核
+    int  threadPinMask = -1;      // CPU 位掩码（bit i = cpu i）；-1 且 threadPin=1 → 默认 0xF8
+    int  bgCpusMask = -1;         // background / system-background 组允许的 CPU（-1 不干预）
+    int  topCpusMask = -1;        // top-app 组允许的 CPU（-1 不干预）
 };
 
 // 策略决策输出
@@ -124,6 +129,11 @@ public:
             else if (k == "maxFreqK3")     t.maxFreqK3 = (int)n;
             else if (k == "maxFreqK7")     t.maxFreqK7 = (int)n;
             else if (k == "handover")      t.handover = (n != 0);
+            // v0.40 线程与分组
+            else if (k == "threadPin")     t.threadPin = (n != 0);
+            else if (k == "threadPinMask") t.threadPinMask = (int)n;
+            else if (k == "bgCpus")        t.bgCpusMask = (int)n;
+            else if (k == "topCpus")       t.topCpusMask = (int)n;
         }
     }
 

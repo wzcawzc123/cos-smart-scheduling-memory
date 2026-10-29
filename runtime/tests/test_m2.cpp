@@ -242,6 +242,33 @@ static void test_reconcile(const std::string& root) {
     std::printf("[reconcile] ok\n");
 }
 
+// ---------- 8. v0.40 cpuset 分组（写入 / 漂移重写 / 关掉即还原） ----------
+static void test_cpuset(const std::string& root) {
+    SysfsAdapter ad(root);
+    put(root + "/dev/cpuset/top-app/cpus", "0-7");
+    put(root + "/dev/cpuset/background/cpus", "0-7");
+    put(root + "/dev/cpuset/system-background/cpus", "0-7");
+    auto cpu = make_cpu_controller("");
+    cpu->probe(ad);
+
+    EffectivePolicy eff;
+    eff.cpu.cpusetBgMask = 0x07;   // 后台只给小核 0-2
+    cpu->apply(eff, ad, false);
+    CHECK(readf(root + "/dev/cpuset/background/cpus") == "0-2", "cpuset: bg mask -> 0-2");
+    CHECK(readf(root + "/dev/cpuset/system-background/cpus") == "0-2", "cpuset: sys-bg mask -> 0-2");
+    CHECK(readf(root + "/dev/cpuset/top-app/cpus") == "0-7", "cpuset: top-app untouched");
+
+    put(root + "/dev/cpuset/background/cpus", "0-7");   // 模拟系统改写
+    std::string d;
+    CHECK(cpu->reconcile(eff, ad, false, d) == 1, "cpuset: drift detected");
+    CHECK(readf(root + "/dev/cpuset/background/cpus") == "0-2", "cpuset: drift rewritten");
+
+    EffectivePolicy off;                                 // 关掉配方 → 还原基线
+    cpu->apply(off, ad, false);
+    CHECK(readf(root + "/dev/cpuset/background/cpus") == "0-7", "cpuset: restore baseline on off");
+    std::printf("[cpuset] ok\n");
+}
+
 int main() {
     std::printf("=== M2′ Controller/Adapter 集成测试 (fake sysfs) ===\n");
     std::string root = mkd("/tmp/uro_fake_%d");
@@ -253,6 +280,7 @@ int main() {
     test_boundary();
     test_isolation(root);
     test_reconcile(root);
+    test_cpuset(root);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);
     // 清理 fake sysfs

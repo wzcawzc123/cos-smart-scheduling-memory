@@ -77,6 +77,11 @@ inline const FieldSpec* field_specs(size_t& n) {
         {"maxFreqK3", -1, 4000000,false, false},
         {"maxFreqK7", -1, 4000000,false, false},
         {"handover",  0, 1,       true,  false},
+        // v0.40 线程与分组（对齐 Uperf 的线程亲和 / 主流模块的 cpuset 管理）
+        {"threadPin",     0, 1,    true,  false},
+        {"threadPinMask", -1, 255, false, false},   // CPU 位掩码：bit i = cpu i
+        {"bgCpus",        -1, 255, false, false},   // background 组允许的 CPU
+        {"topCpus",       -1, 255, false, false},   // top-app 组允许的 CPU
     };
     n = sizeof(kSpecs) / sizeof(kSpecs[0]);
     return kSpecs;

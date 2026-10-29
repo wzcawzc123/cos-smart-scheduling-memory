@@ -3,6 +3,49 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.40.0（versionCode 4000）— 对齐主流：线程亲和 + cpuset 分组
+
+### 与主流模块的差距盘点
+参考对象：**Uperf**（yc9559，用户态性能控制器）、**fas-rs**（shadow3aaa，帧感知调度）、
+NovaSched 映射（`docs/对照组B`）、Scene / WIPE 生态的常见做法。
+
+| 能力 | 主流做法 | URO v0.39 | 本轮 |
+|---|---|---|---|
+| 场景识别（前台/熄屏/触摸/温度/电量） | 有 | 有，且策略外置可热改 | — |
+| 帧感知闭环（渲染时间 → 频率） | Uperf 注入 SF hook；fas-rs 监视渲染管线 | 仅 60s gfxinfo 统计 + 哨兵降档 | 未做（需注入，见下） |
+| **线程亲和**（UI/Render 绑核） | Uperf 核心能力 | 无 | **本版实现** |
+| **cpuset 分组管理** | 多数模块会写 | 只探针不写 | **本版实现（含基线还原）** |
+| 参数热重载 / 场景配方 | 配置文件 | 有（mtime 热重载 + 整份校验） | — |
+| 抗厂商改写（漂移重写） | 多数只写一次 | v0.39 已对夹频实现 | 扩展到 cpuset |
+| 看板 / 遥测 | Scene 有 App，多数只有日志 | 五分区 WebUI + telemetry | — |
+| CPU 热插拔 / 关核 | 部分（WIPE、YC 系） | 无 | 不做（见下） |
+| 刷新率联动 | 部分（LTPO 类模块） | 无（与你的 LTPO 模块分工） | 保持分工 |
+
+### 新增：线程亲和（threadPin）
+- 对齐 Uperf 的“把正在操作的 App 的 UI 线程绑到大核集群”：用 `sched_setaffinity`
+  绑定主线程 + `RenderThread` / `hwuiTask*` / `GLThread` / `UnityMain`
+- 默认掩码 **0xF8（cpu3-7，避开小核）**，`threadPinMask` 可自定义
+- 借 reconcile 周期重绑（线程会重建）；**关配方 / 进程退出 / 卸载前自动解绑**
+  · 实测：绑上后 `Cpus_allowed_list: 3-7`，SIGTERM 退出后回到 `0-7`
+- 默认关闭，配方 `[BALANCE] threadPin=1` 才启用
+
+### 新增：cpuset 分组（bgCpus / topCpus）
+- 写 `/dev/cpuset/{top-app,background,system-background}/cpus`，位掩码语法
+- probe 时记基线 → **配方关掉即还原**；被系统改写时由 reconcile 重写
+- 默认不干预（-1）；示例 `bgCpus=7` = 后台只给 cpu0-2
+
+### 不做 / 留待下版（附理由）
+- **帧感知闭环**：Uperf 靠注入 SurfaceFlinger、fas-rs 靠监视渲染管线，两者都需要
+  常驻注入。URO 目前是纯 root 无注入，做真闭环必须引入 LSPosed 模块（独立工程），
+  单列 v0.41 评估。
+- **CPU 热插拔**：关核能省电，但本机 uag 与厂商热控以“全核在线”为前提，实测
+  online 节点会被反复拉起，收益不确定且可能触发异常，暂不做。
+- 三簇仍按 `policy0/3/7` 命名（本机 cpu0-2 / cpu3-6 / cpu7），跨 SoC 自动聚类仍未做。
+
+### 测试
+- host 测试 **325 断言 0 失败**（新增 cpuset 写入 / 漂移重写 / 关掉还原 6 条）
+- 真机：绑核生效 + 退出解绑生效
+
 ## v0.39.0（versionCode 3900）— 漂移重写守护 + 温度源治理 + WebUI 异步真正落地
 
 ### 核心：厂商会改写我方夹频（本机实测）

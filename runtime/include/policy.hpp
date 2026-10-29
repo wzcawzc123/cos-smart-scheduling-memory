@@ -51,6 +51,11 @@ struct CpuPolicy {
     int  uclampMin = -1;   // sched_util_clamp_min：抬高 util 下限 → 更容易升频（性能向）
     int  uclampMax = -1;   // sched_util_clamp_max：压低 util 上限（省电向）
     int  uclampRt = -1;    // sched_util_clamp_min_rt_default：RT 任务 util 下限
+    // ---- v0.40 线程与分组（对齐 Uperf 线程亲和 + 主流 cpuset 管理）----
+    bool threadPin = false;      // 是否绑定前台 UI/Render 线程
+    int  threadPinMask = -1;     // CPU 位掩码（bit i = cpu i）；-1 且 threadPin → 默认 0xF8
+    int  cpusetBgMask = -1;      // background/system-background 组允许的 CPU（-1 不干预）
+    int  cpusetTopMask = -1;     // top-app 组允许的 CPU（-1 不干预）
 };
 
 struct GpuPolicy {
@@ -126,6 +131,10 @@ inline bool materially_different(const EffectivePolicy& a, const EffectivePolicy
            a.cpu.cpusetProfile != b.cpu.cpusetProfile ||
            a.cpu.onlineCores != b.cpu.onlineCores ||
            a.cpu.launchBoost != b.cpu.launchBoost ||
+           a.cpu.threadPin != b.cpu.threadPin ||
+           a.cpu.threadPinMask != b.cpu.threadPinMask ||
+           a.cpu.cpusetBgMask != b.cpu.cpusetBgMask ||
+           a.cpu.cpusetTopMask != b.cpu.cpusetTopMask ||
            a.cpu.uagUpRateUs != b.cpu.uagUpRateUs ||
            a.cpu.uagDownRateUs != b.cpu.uagDownRateUs ||
            a.gpu.maxFreq != b.gpu.maxFreq || a.gpu.minFreq != b.gpu.minFreq ||

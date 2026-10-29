@@ -60,6 +60,9 @@ public:
     // 一次写入会被静默覆盖。实现者按当前 EffectivePolicy 读回核对，
     // 发现漂移即重写并返回漂移节点数；-1 = 不参与漂移守护（默认）。
     virtual int reconcile(const EffectivePolicy&, SysfsAdapter&, bool, std::string&) { return -1; }
+
+    // v0.40 退出清理：进程结束前撤销"粘滞"副作用（如 sched_setaffinity 绑定）
+    virtual void shutdown() {}
 };
 
 using ControllerPtr = std::unique_ptr<Controller>;
@@ -72,6 +75,8 @@ ControllerPtr make_memory_controller(const std::string& policyFile = "",
                                      const std::string& stateFile = "");
 // cpuStateFile = uag 参数基线档案路径（空 = 不接管 uag 参数）
 ControllerPtr make_cpu_controller(const std::string& cpuStateFile = "");
+struct FgShared;   // 完整定义在 drivers.hpp
+ControllerPtr make_thread_controller(std::shared_ptr<FgShared> fg);   // v0.40 线程亲和（Uperf 式）
 ControllerPtr make_gpu_placeholder();
 ControllerPtr make_thermal_placeholder();
 

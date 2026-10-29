@@ -199,6 +199,7 @@ int main(int argc, char** argv) {
                                    "/data/adb/modules/COSMemory/config/memory.json",
                                    std::string(logdir) + "/bridge.state"));
     reg.add(make_cpu_controller(std::string(logdir) + "/cpu.state"));
+    reg.add(make_thread_controller(fg));   // v0.40 线程亲和（对齐 Uperf）
     reg.add(make_gpu_placeholder());
     reg.add(make_thermal_placeholder());
     auto probeReps = reg.probe_all(ad);
@@ -380,6 +381,11 @@ int main(int argc, char** argv) {
         base.cpu.uclampMin = dec.tactics.uclampMin;      // v0.36 uclamp
         base.cpu.uclampMax = dec.tactics.uclampMax;
         base.cpu.uclampRt = dec.tactics.uclampRt;
+        // v0.40 线程与分组
+        base.cpu.threadPin = dec.tactics.threadPin;
+        base.cpu.threadPinMask = dec.tactics.threadPinMask;
+        base.cpu.cpusetBgMask = dec.tactics.bgCpusMask;
+        base.cpu.cpusetTopMask = dec.tactics.topCpusMask;
         base.gpu.thermalPwr = dec.tactics.gpuThermalPwr; // v0.36 GPU 补全
         base.gpu.minClkMhz = dec.tactics.gpuMinClkMhz;
         base.gpu.maxClkMhz = dec.tactics.gpuMaxClkMhz;
@@ -540,6 +546,8 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[URO-M2′] exit-by-signal %d (SIGHUP=1/SIGINT=2/SIGTERM=15)\n", g_stopSig);
         elog.line("UroExitBySignal sig=" + std::to_string(g_stopSig));
     }
+    // v0.40：退出前撤销粘滞副作用（线程亲和等），避免卸载/停用后留下"钉核"
+    for (size_t i = 0; i < reg.size(); ++i) reg.at(i).shutdown();
     for (size_t i = 0; i < reg.size(); ++i)
         fprintf(stderr, "[URO-M2′] final: %s\n", reg.at(i).status().c_str());
     return 0;

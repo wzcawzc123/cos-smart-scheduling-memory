@@ -1,6 +1,6 @@
 id=uro
 name=UnifiedRootOptimizer
-version=v0.39.0
-versionCode=3900
+version=v0.40.0
+versionCode=4000
 author=是你吗薰儿
-description=四档自治+智能感知+App画像+2PC+AppOpt指挥链+参数外置(场景配方热改)+GPU边界接管+三簇独立夹频+CPU下限+uag软上限+Thermal夹档+电量守卫+帧率哨兵+手动档位(WebUI)+GPU补全+uclamp+配方编辑器+五分区看板+漂移重写守护+SoC温度源
+description=四档自治+智能感知+App画像+2PC+AppOpt指挥链+参数外置(场景配方热改)+GPU边界接管+三簇独立夹频+CPU下限+uag软上限+Thermal夹档+电量守卫+帧率哨兵+手动档位(WebUI)+GPU补全+uclamp+配方编辑器+五分区看板+漂移重写守护+SoC温度源+线程亲和+分组cpuset

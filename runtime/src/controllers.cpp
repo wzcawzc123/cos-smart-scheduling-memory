@@ -5,8 +5,12 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <cstdlib>
+#include <cctype>
 #include <map>
 #include <unistd.h>
+#include <dirent.h>
+#include <sched.h>
 
 namespace uro {
 
@@ -25,6 +29,21 @@ static CtrlReport fold(const std::vector<NodeCap>& caps, const char* what) {
                    std::to_string(caps.size()) + " nodes — skip this class: " + oss.str();
     }
     return r;
+}
+
+// v0.40：CPU 位掩码 → cpuset 文本格式（0x07 → "0-2"，0x81 → "0,7"）
+static std::string cpuset_str(int mask) {
+    std::string out;
+    for (int i = 0; i < 32; ) {
+        if (!(mask & (1 << i))) { ++i; continue; }
+        int j = i;
+        while (j + 1 < 32 && (mask & (1 << (j + 1)))) ++j;
+        if (!out.empty()) out += ",";
+        out += std::to_string(i);
+        if (j > i) out += "-" + std::to_string(j);
+        i = j + 1;
+    }
+    return out;
 }
 
 // ============================ Memory Controller ============================
@@ -433,6 +452,11 @@ public:
         };
         // cpuset 属"可选能力"：缺失只降级 cpuset 子类，不拖垮整个 CPU Controller
         NodeCap cs = ad.probe("/dev/cpuset/top-app/cpus");
+        // v0.40：cpuset 基线（用于"关掉配方就还原"，避免开了关不掉）
+        for (const char* g : {"top-app", "background", "system-background"}) {
+            std::string gp = std::string("/dev/cpuset/") + g + "/cpus";
+            if (auto v = ad.read(gp)) cpusetBase_[g] = *v;
+        }
         r_ = fold(caps, "cpu");
         if (r_.state == CtrlState::Active) {
             if (!cs.exists) { cpusetOk_ = false; r_.detail = "cpuset absent — cpuset class skipped"; }
@@ -550,6 +574,34 @@ public:
         // v0.35：夹频改由下方 per-cluster scalar 组统一处理（policy0/3/7 独立）
         r.detail = std::string("gov=") + governor_ +
                    (cpusetOk_ ? "" : " cpuset=SKIP");
+
+        // ---- v0.40 cpuset 分组（默认不干预；配方 bgCpus/topCpus 才写）----
+        // 注：ColorOS 有自己的 cpuset 策略，写入同样可能被改写 → reconcile 一并核对。
+        // mask<0 且我方写过 → 归还 probe 时记下的基线，避免"开了关不掉"。
+        {
+            auto applyGroup = [&](const char* group, int mask) {
+                std::string gp = std::string("/dev/cpuset/") + group + "/cpus";
+                if (!ad.exists(gp)) { if (mask >= 0) r.detail += std::string(" ") + group + "=MISS"; return; }
+                if (mask < 0) {
+                    auto w = cpusetWrote_.find(group);
+                    if (w == cpusetWrote_.end() || !w->second) return;
+                    auto b = cpusetBase_.find(group);
+                    if (b != cpusetBase_.end() && !b->second.empty() && !dryRun)
+                        ad.write(gp, b->second, false, nullptr);
+                    cpusetWrote_[group] = false;
+                    r.detail += std::string(" ") + group + "=base";
+                    return;
+                }
+                std::string val = cpuset_str(mask);
+                if (val.empty()) return;
+                if (!dryRun) ad.write(gp, val, false, nullptr);
+                cpusetWrote_[group] = true;
+                r.detail += std::string(" ") + group + "=" + val;
+            };
+            applyGroup("top-app", eff.cpu.cpusetTopMask);
+            applyGroup("background", eff.cpu.cpusetBgMask);
+            applyGroup("system-background", eff.cpu.cpusetBgMask);
+        }
 
         // ---- uag up/down_rate_limit（阶段B-CPU + 阶段2）：-1=回基线，否则写场景值 ----
         if (!uagNodes_.empty() && !uagBase_.empty()) {
@@ -698,6 +750,8 @@ private:
         int  last = -1;
     };
     std::vector<ScalarNode> scalars_;
+    std::map<std::string, std::string> cpusetBase_;   // v0.40 组 → 原始 cpus 文本
+    std::map<std::string, bool> cpusetWrote_;         // v0.40 组 → 我方是否写过
     bool scalarsInit_ = false;
 
     void ensureScalars(SysfsAdapter& ad) {
@@ -789,7 +843,38 @@ private:
         fix(eff.cpu.uclampMin, "uclampMin");
         fix(eff.cpu.uclampMax, "uclampMax");
         fix(eff.cpu.uclampRt,  "uclampRt");
+
+        // v0.40：cpuset 分组同样会被系统/厂商改写 → 一并核对
+        auto chkGroup = [&](const char* group, int mask) {
+            if (mask < 0) return;
+            std::string gp = std::string("/dev/cpuset/") + group + "/cpus";
+            std::string want = cpuset_str(mask);
+            if (want.empty()) return;
+            auto v = ad.read(gp);
+            if (!v) return;
+            std::string cur;
+            for (char c : *v) if (!isspace((unsigned char)c)) cur += c;
+            if (cur == want) return;
+            ++drift;
+            if (!dryRun) ad.write(gp, want, false, nullptr);
+            d += std::string("cs:") + group + "(" + cur + "->" + want + ") ";
+        };
+        chkGroup("top-app", eff.cpu.cpusetTopMask);
+        chkGroup("background", eff.cpu.cpusetBgMask);
+        chkGroup("system-background", eff.cpu.cpusetBgMask);
         return drift;
+    }
+
+    // v0.40：cpuset 写入是粘滞的（进程退出不会自动还原）→ 退出时归还基线
+    void shutdown() override {
+        for (auto& kv : cpusetWrote_) {
+            if (!kv.second) continue;
+            auto b = cpusetBase_.find(kv.first);
+            if (b == cpusetBase_.end() || b->second.empty()) continue;
+            std::ofstream f(std::string("/dev/cpuset/") + kv.first + "/cpus");
+            if (f.is_open()) f << b->second;
+            kv.second = false;
+        }
     }
 };
 // §9 M2′：GPU/Thermal 仅留接口占位——类在、接口在、恒 Degraded(placeholder)，
@@ -954,6 +1039,122 @@ ControllerPtr make_memory_controller(const std::string& policyFile,
 }
 ControllerPtr make_cpu_controller(const std::string& cpuStateFile) {
     return std::make_unique<CpuController>(cpuStateFile);
+}
+
+// ==================== v0.40 线程亲和（对齐 Uperf 的 UI 线程绑定）====================
+// Uperf 的核心差异点之一：把正在操作的 App 的 UI/Render 线程动态绑到非小核集群。
+// 这里用 sched_setaffinity 直接操作目标线程（root 对他人进程有效），不依赖内核补丁。
+// 线程生命周期短（RenderThread 会重建），因此借 reconcile 周期重新绑定；
+// reconcile 返回 0 = 不是"节点漂移"，不会在事件日志刷漂移记录。
+class ThreadController final : public Controller {
+public:
+    explicit ThreadController(FgSharedPtr fg) : fg_(std::move(fg)) {}
+    const char* name() const override { return "thread"; }
+
+    CtrlReport probe(SysfsAdapter&) override {
+        r_ = {CtrlState::Active, "sched_setaffinity ready; threadPin=0（配方开启后才绑核）"};
+        return r_;
+    }
+    void on_event(const Event&, const GlobalState&) override {}
+    EffectivePolicy desire() const override { return EffectivePolicy{}; }
+    CtrlState state() const override { return r_.state; }
+    std::string status() const override { return r_.detail; }
+
+    CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun) override {
+        int mask = want_mask(eff);
+        if (mask == 0) {
+            // 关掉配方必须解绑：sched_setaffinity 是粘滞状态，不解绑会一直限制前台线程
+            if (lastMask_ != 0 && !dryRun) { pin_now(all_mask()); lastMask_ = 0; }
+            return {CtrlState::Active, "thread=off"};
+        }
+        if (dryRun) return {CtrlState::Active, "thread=DRY " + cpuset_str(mask)};
+        int n = pin_now(mask);
+        lastMask_ = mask;
+        return {CtrlState::Active, "thread=" + cpuset_str(mask) + " pinned=" + std::to_string(n)};
+    }
+
+    int reconcile(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun, std::string&) override {
+        if (dryRun) return 0;
+        int mask = want_mask(eff);
+        if (mask == 0) {
+            if (lastMask_ != 0) { pin_now(all_mask()); lastMask_ = 0; }
+            return 0;
+        }
+        pin_now(mask);
+        lastMask_ = mask;
+        return 0;
+    }
+
+    // 进程退出/被卸载前撤销绑定，避免"卸载后前台应用还钉在 3-7"
+    void shutdown() override {
+        if (lastMask_ != 0) { pin_now(all_mask()); lastMask_ = 0; }
+    }
+
+private:
+    // 默认掩码 0xF8 = cpu3-7（避开小核 cpu0-2，降低 UI 卡顿）
+    static int want_mask(const EffectivePolicy& eff) {
+        if (!eff.cpu.threadPin) return 0;
+        return eff.cpu.threadPinMask >= 0 ? eff.cpu.threadPinMask : 0xF8;
+    }
+
+    // 全核掩码（解绑用）：按设备实际核数，避免给不存在的 CPU 设位（内核会 EINVAL）
+    static int all_mask() {
+        long n = sysconf(_SC_NPROCESSORS_CONF);
+        if (n <= 0) n = 8;
+        if (n > 31) n = 31;
+        return (int)((1u << n) - 1);
+    }
+
+    int pin_now(int mask) {
+        std::string pkg = fg_ ? fg_->get() : std::string();
+        if (pkg.empty()) return 0;
+        cpu_set_t set; CPU_ZERO(&set);
+        for (int i = 0; i < 32; ++i) if (mask & (1 << i)) CPU_SET(i, &set);
+
+        int pinned = 0;
+        DIR* d = opendir("/proc");
+        if (!d) return 0;
+        struct dirent* e;
+        while ((e = readdir(d)) != nullptr) {
+            if (e->d_name[0] < '1' || e->d_name[0] > '9') continue;
+            pid_t pid = (pid_t)atoi(e->d_name);
+            std::string base = std::string("/proc/") + e->d_name;
+            // 只认主进程（cmdline 首段 == 包名），跳过 :push / :remote 之类子进程
+            std::string cmd;
+            { std::ifstream f(base + "/cmdline", std::ios::binary); std::getline(f, cmd, '\0'); }
+            if (cmd != pkg) continue;
+            std::string tdir = base + "/task";
+            DIR* td = opendir(tdir.c_str());
+            if (!td) continue;
+            struct dirent* te;
+            while ((te = readdir(td)) != nullptr) {
+                if (te->d_name[0] < '1' || te->d_name[0] > '9') continue;
+                pid_t tid = (pid_t)atoi(te->d_name);
+                bool want = (tid == pid);   // 主线程
+                if (!want) {
+                    std::string comm;
+                    { std::ifstream f(tdir + "/" + te->d_name + "/comm"); std::getline(f, comm); }
+                    want = comm.find("RenderThread") != std::string::npos ||
+                           comm.rfind("hwuiTask", 0) == 0 ||
+                           comm.find("GLThread") != std::string::npos ||
+                           comm.find("UnityMain") != std::string::npos;
+                }
+                if (!want) continue;
+                if (sched_setaffinity(tid, sizeof(set), &set) == 0) ++pinned;
+            }
+            closedir(td);
+        }
+        closedir(d);
+        return pinned;
+    }
+
+    FgSharedPtr fg_;
+    int lastMask_ = 0;   // 当前绑定掩码（0 = 未绑）；用于 mask=0 / 退出时解绑
+    CtrlReport r_{CtrlState::Probing, ""};
+};
+
+ControllerPtr make_thread_controller(FgSharedPtr fg) {
+    return std::make_unique<ThreadController>(std::move(fg));
 }
 ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuController>(); }
 ControllerPtr make_thermal_placeholder(){ return std::make_unique<ThermalPlaceholder>(); }
