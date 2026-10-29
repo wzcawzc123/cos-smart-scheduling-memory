@@ -46,11 +46,41 @@ fi
 [ -f "$BIN" ] && chmod 755 "$BIN" 2>/dev/null
 echo "[$(date '+%F %T')] WATCHDOG start bin=$BIN" >> "$LOG"
 
+CRASH_N=0        # 时间窗内连续崩溃次数（v0.39 熔断）
+CRASH_T0=0       # 窗口起点
+lastStart=0      # 上次拉起时间（用于判定"稳定存活"）
+DL="$LOGDIR/uro_daemon.log"
 while :; do
+  now=$(date +%s)
   if ! pgrep -f "$BIN" >/dev/null 2>&1; then
-    echo "[$(date '+%F %T')] WATCHDOG restart (dead)" >> "$LOG"
-    "$BIN" >> "$LOGDIR/uro_daemon.log" 2>&1 &
+    # 熔断：10 分钟内连续崩 5 次 → 退避 5 分钟，避免崩溃循环持续烧电/刷日志
+    if [ "$CRASH_N" -ge 5 ] && [ $((now - CRASH_T0)) -lt 600 ]; then
+      echo "[$(date '+%F %T')] WATCHDOG circuit-open: $CRASH_N crashes in $((now - CRASH_T0))s -> backoff 300s" >> "$LOG"
+      sleep 300
+      CRASH_N=0; CRASH_T0=0
+      continue
+    fi
+    if [ "$CRASH_T0" -eq 0 ] || [ $((now - CRASH_T0)) -ge 600 ]; then
+      CRASH_N=0; CRASH_T0=$now
+    fi
+    CRASH_N=$((CRASH_N + 1))
+    # 守护日志滚动（512KB）：常驻循环里也要滚，否则长期运行无限增长
+    if [ -f "$LOG" ]; then
+      sz=$(stat -c %s "$LOG" 2>/dev/null || echo 0)
+      [ "$sz" -gt 524288 ] && mv "$LOG" "$LOG.1"
+    fi
+    if [ -f "$DL" ]; then
+      dsz=$(stat -c %s "$DL" 2>/dev/null || echo 0)
+      [ "$dsz" -gt 2097152 ] && mv "$DL" "$DL.1"
+    fi
+    echo "[$(date '+%F %T')] WATCHDOG restart (dead, #$CRASH_N in window)" >> "$LOG"
+    "$BIN" >> "$DL" 2>&1 &
+    lastStart=$now
     # 首轮启动后 URORuntime 会做崩溃残留检查（bridge.state DIRTY=1 → 恢复用户基线）
+  elif [ "$lastStart" -gt 0 ] && [ $((now - lastStart)) -ge 180 ]; then
+    # 稳定存活 3 分钟 → 清零熔断计数
+    CRASH_N=0; CRASH_T0=0; lastStart=0
+    echo "[$(date '+%F %T')] WATCHDOG stable (uptime>=180s), crash counter reset" >> "$LOG"
   fi
   sleep 30
 done

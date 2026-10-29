@@ -79,6 +79,7 @@ std::string thermal_json(const std::string& thermalRoot);
 std::string battery_json(const std::string& psRoot);
 bool parse_gfxinfo(const std::string& text, long& total, long& janky);
 int read_max_temp(const std::string& thermalRoot);
+std::string find_soc_zone(const std::string& thermalRoot);   // v0.39：按 type 找 SoC 传感器
 std::string gpu_json(const std::string& kgslRoot);
 void read_battery_state(const std::string& psRoot, int& pct, bool& charging);
 bool fps_sentry_trigger(const int* jankPctHist, int n, int threshPct);

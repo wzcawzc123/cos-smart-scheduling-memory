@@ -156,6 +156,24 @@ int main(int argc, char** argv) {
             if (line.rfind("APPOPT_GAME_EXEMPT=0", 0) == 0) return false;
         return true;
     };
+    // v0.39：通用 int 读项（缺省/非法 → def）
+    auto read_conf_int = [](const char* p, const char* key, int def) -> int {
+        std::ifstream f(p);
+        if (!f.is_open()) return def;
+        std::string line;
+        size_t klen = strlen(key);
+        while (std::getline(f, line)) {
+            if (line.rfind(key, 0) != 0) continue;
+            if (line.size() <= klen || line[klen] != '=') continue;
+            const char* v = line.c_str() + klen + 1;
+            char* end = nullptr;
+            long n = strtol(v, &end, 10);
+            if (end == v) return def;
+            return (int)n;
+        }
+        return def;
+    };
+
     bool argEnforce = (argc > 2 && strcmp(argv[2], "--bridge-enforce") == 0);
     bool bridgeEnforce = argEnforce || read_bridge_enforce(kUroConf);   // 仅用于启动日志
     signal(SIGINT, on_stop); signal(SIGTERM, on_stop);
@@ -269,11 +287,58 @@ int main(int argc, char** argv) {
     bool appliedOnce = false;
     bool lastEn = false;   // 上一边界的 enforce 态（用于关闭时恢复基线）
 
+    // ---- v0.39 漂移守护（drift reconcile）----
+    // 背景（本机实测）：厂商调度/uag 会在数秒内把 scaling_max_freq 改写回自己的
+    // 值（policy0 在 2016000/1785600/1459200 之间摆动），一次性写入形同虚设。
+    // 策略未变时按 RECONCILE_MS（默认 5000，0=关闭）周期读回核对，仅在真漂移时重写。
+    int reconMs = read_conf_int(kUroConf, "RECONCILE_MS", 5000);
+    if (reconMs < 0) reconMs = 0;
+    int reconFastMs = read_conf_int(kUroConf, "RECONCILE_FAST_MS", 2000);
+    if (reconFastMs <= 0 || reconFastMs > reconMs) reconFastMs = reconMs;   // 不快于 1s 量级
+    int reconCurMs = reconMs;      // 当前生效周期（漂移期加速、静默期回退）
+    int reconQuiet = 0;            // 连续无漂移轮数
+    uint64_t lastReconMs = 0;
+    int reconTotal = 0;
+    auto maybe_reconcile = [&](uint64_t now, bool en) {
+        if (reconMs <= 0 || !appliedOnce) return;
+        if (now - lastReconMs < (uint64_t)reconCurMs) return;
+        if (st.thermalLevel > 0) return;              // 温控优先：高温期不复写，交给厂商限制
+        if (st.batteryPct >= 0 && st.batteryPct < 20) return;  // 低电守卫优先
+        lastReconMs = now;
+        std::string d;
+        int n = reg.reconcile_all(lastApplied, ad, !en, d);
+        if (n <= 0) {
+            // 连续 6 轮无漂移 → 退回慢周期，避免长期与厂商调度高频对抗
+            if (++reconQuiet >= 6 && reconCurMs != reconMs) { reconCurMs = reconMs; reconQuiet = 0; }
+            return;
+        }
+        reconTotal += n;
+        reconQuiet = 0;
+        // 漂移期加速抢占：厂商改写通常在 1~3s 内发生，慢周期抢不过
+        if (reconFastMs < reconMs) reconCurMs = reconFastMs;
+        char tsx[32];
+        time_t s = now / 1000; struct tm tmv{};
+        localtime_r(&s, &tmv);
+        strftime(tsx, sizeof tsx, "%F %T", &tmv);
+        elog.line(std::string(tsx) + " RECONCILE drift=" + std::to_string(n) + " " + d);
+        plog.line(std::string("  RECONCILE drift=") + std::to_string(n) + " " + d);
+        std::ostringstream jt;
+        jt << "{\"ts\":" << now / 1000 << ",\"action_id\":\"rc" << now / 1000
+           << "-" << getpid() << "\",\"reconcile\":1,\"drift\":" << n
+           << ",\"total\":" << reconTotal
+           << ",\"enforce\":" << (en ? 1 : 0)
+           << ",\"detail\":\"" << json_esc(d) << "\"}";
+        tel_append(std::string(logdir) + "/telemetry.jsonl", jt.str());
+    };
+
     // ---- 策略执行单元（事件驱动与租约回落共用；§3.4 写完即走）----
     auto run_policy = [&](const Event& ev, uint64_t now) {
         Decision dec = pm.decide(st, ev, now);
         pm.note_lease(dec.leaseUntilMs);
-        if (!dec.changed) return;
+        if (!dec.changed) {   // v0.39：策略未变的空闲节拍上做漂移核对
+            maybe_reconcile(now, argEnforce || read_bridge_enforce(kUroConf));
+            return;
+        }
         // 热读面板开关（每次策略边界，非轮询）：面板一开一关立即生效。
         // 注意用启动参数 argEnforce 而非缓存值 bridgeEnforce —— 后者含启动时的文件状态，
         // 会因 || 短路让热读永不执行（端到端验证抓到的 bug）。
@@ -391,6 +456,7 @@ int main(int argc, char** argv) {
         ad.clear_traces();
         appliedOnce = true;
         lastApplied = eff;
+        lastReconMs = now;   // 刚写过，重置漂移守护计时钟
 
         // ---- 阶段C：结构化 telemetry（幂等门槛之上 = 低频；P0-07 action_id 审计）----
         {

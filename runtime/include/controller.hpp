@@ -55,6 +55,11 @@ public:
 
     virtual CtrlState state() const = 0;
     virtual std::string status() const = 0;   // telemetry 摘要
+
+    // v0.39 漂移守护：厂商调度/uag 会周期改写 scaling_min/max_freq 等节点，
+    // 一次写入会被静默覆盖。实现者按当前 EffectivePolicy 读回核对，
+    // 发现漂移即重写并返回漂移节点数；-1 = 不参与漂移守护（默认）。
+    virtual int reconcile(const EffectivePolicy&, SysfsAdapter&, bool, std::string&) { return -1; }
 };
 
 using ControllerPtr = std::unique_ptr<Controller>;
@@ -145,6 +150,25 @@ public:
             reps.push_back(r);
         }
         return reps;
+    }
+
+    // v0.39 漂移守护：只询问参与守护的 Controller（reconcile 返回 -1 的跳过），
+    // 返回漂移节点总数；detail 汇总各控制器回报。
+    int reconcile_all(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun, std::string& detail) {
+        int total = 0;
+        for (auto& c : ctrls_) {
+            std::string d;
+            int n = -1;
+            try {
+                n = c->reconcile(eff, ad, dryRun, d);
+            } catch (const std::exception& ex) {
+                d = std::string(c->name()) + " reconcile exception: " + ex.what();
+            } catch (...) {
+                d = std::string(c->name()) + " reconcile exception: unknown";
+            }
+            if (n > 0) { total += n; if (!d.empty()) detail += d + " "; }
+        }
+        return total;
     }
 
     bool any_active() const {

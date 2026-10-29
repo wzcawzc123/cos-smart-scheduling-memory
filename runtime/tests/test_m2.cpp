@@ -197,6 +197,51 @@ static void test_isolation(const std::string& root) {
     std::printf("[isolation] ok\n");
 }
 
+static std::string readf(const std::string& p) {
+    std::ifstream f(p); std::string s; std::getline(f, s); return s;
+}
+
+// ---------- 7. v0.39 漂移重写守护（drift reconcile） ----------
+// 依据真机实测：ColorOS 会在数秒内改写 scaling_max_freq，一次性写入失效。
+// 这里用 fake sysfs 复现"写入 → 被改 → 守护重写 → 无漂移"的完整路径。
+static void test_reconcile(const std::string& root) {
+    SysfsAdapter ad(root);
+    const char* pols[3] = {"policy0", "policy3", "policy7"};
+    const char* caps[3] = {"2016000", "2803200", "3187200"};
+    for (int i = 0; i < 3; ++i) {
+        std::string b = root + "/sys/devices/system/cpu/cpufreq/" + pols[i];
+        put(b + "/scaling_min_freq", "307200");
+        put(b + "/scaling_max_freq", caps[i]);
+        put(b + "/cpuinfo_max_freq", caps[i]);
+        put(b + "/scaling_governor", "uag");
+        put(b + "/uag/soft_limit_freq", caps[i]);
+    }
+    auto cpu = make_cpu_controller("");   // 无状态文件 → 不扫 uag rate 节点
+    cpu->probe(ad);
+    CHECK(cpu->state() == CtrlState::Active, "reconcile: cpu controller active");
+
+    EffectivePolicy eff;
+    eff.cpu.maxFreq  = 1600000;
+    eff.cpu.maxFreq3 = 2000000;
+    cpu->apply(eff, ad, false);
+    std::string p0 = root + "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq";
+    std::string p3 = root + "/sys/devices/system/cpu/cpufreq/policy3/scaling_max_freq";
+    CHECK(readf(p0) == "1600000", "reconcile: apply wrote policy0 max");
+    CHECK(readf(p3) == "2000000", "reconcile: apply wrote policy3 max");
+
+    put(p0, "1200000");   // 模拟厂商改写
+    std::string d;
+    CHECK(cpu->reconcile(eff, ad, false, d) == 1, "reconcile: detects 1 drifted node");
+    CHECK(readf(p0) == "1600000", "reconcile: rewrote drifted node");
+    CHECK(cpu->reconcile(eff, ad, false, d) == 0, "reconcile: no drift after rewrite");
+
+    EffectivePolicy e2;                 // 超簇上限 → 必须 clamp，否则内核 EINVAL 静默丢弃
+    e2.cpu.maxFreq = 3500000;
+    cpu->apply(e2, ad, false);
+    CHECK(readf(p0) == "2016000", "reconcile: clamp to cluster hw max");
+    std::printf("[reconcile] ok\n");
+}
+
 int main() {
     std::printf("=== M2′ Controller/Adapter 集成测试 (fake sysfs) ===\n");
     std::string root = mkd("/tmp/uro_fake_%d");
@@ -207,6 +252,7 @@ int main() {
     test_intersect();
     test_boundary();
     test_isolation(root);
+    test_reconcile(root);
 
     std::printf("\n结果: %d passed, %d failed\n", pass, fail);
     // 清理 fake sysfs

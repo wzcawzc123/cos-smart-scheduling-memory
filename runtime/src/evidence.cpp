@@ -103,22 +103,66 @@ bool fps_sentry_trigger(const int* jankPctHist, int n, int threshPct) {
     return true;
 }
 
+// v0.39：温度源分型。旧实现扫全部 thermal_zone 取最大值 —— 本机 zone0 是
+// "pa"（功放）、还有 battery/shell_*/wireless 等，最大值可能来自非 SoC 传感器，
+// 导致热级误判。改为优先只采纳 SoC 类（cpuss/cpu-*-*/gpuss），无此类时再回退。
+static bool is_soc_temp_type(const std::string& t) {
+    return t.rfind("cpuss", 0) == 0 || t.rfind("cpu-", 0) == 0 || t.rfind("gpuss", 0) == 0;
+}
+static bool is_non_soc_temp_type(const std::string& t) {
+    static const char* bad[] = {"pa", "battery", "vbat", "shell_", "usb", "wireless",
+                                "mmw", "zeku", "socd", "arch", "quiet", "cam", "nsp",
+                                "wlan", "ddr", "disp"};
+    for (const char* b : bad)
+        if (t.rfind(b, 0) == 0) return true;
+    return false;
+}
+
 int read_max_temp(const std::string& thermalRoot) {
-    int best = -1;
+    int best = -1;      // SoC 类最高温（首选）
+    int fallback = -1;  // 非 SoC 回退（老机型无 cpuss/cpu-*/gpuss 命名时）
     DIR* d = opendir(thermalRoot.c_str());
     if (!d) return -1;
     struct dirent* en;
     while ((en = readdir(d)) != nullptr) {
         std::string name = en->d_name;
         if (name.rfind("thermal_zone", 0) != 0) continue;
+        std::string type;
+        {
+            std::ifstream ft(thermalRoot + "/" + name + "/type");
+            if (ft.is_open()) std::getline(ft, type);
+        }
         std::ifstream fv(thermalRoot + "/" + name + "/temp");
         if (!fv.is_open()) continue;
         long mc = 0; fv >> mc;
+        if (mc <= -40000 || mc > 150000) continue;   // 未校准/无效传感器（如 -273000）
         int c = (int)(mc / 1000);
-        if (c > best) best = c;
+        if (is_soc_temp_type(type)) {
+            if (c > best) best = c;
+        } else if (!is_non_soc_temp_type(type)) {
+            if (c > fallback) fallback = c;
+        }
     }
     closedir(d);
-    return best;
+    return best >= 0 ? best : fallback;
+}
+
+// v0.39：供 ThermalPlaceholder 判存在（按 type 找 SoC 传感器，而非假定 zone0）
+std::string find_soc_zone(const std::string& thermalRoot) {
+    DIR* d = opendir(thermalRoot.c_str());
+    if (!d) return "";
+    struct dirent* en;
+    std::string hit;
+    while ((en = readdir(d)) != nullptr) {
+        std::string name = en->d_name;
+        if (name.rfind("thermal_zone", 0) != 0) continue;
+        std::ifstream ft(thermalRoot + "/" + name + "/type");
+        if (!ft.is_open()) continue;
+        std::string type; std::getline(ft, type);
+        if (is_soc_temp_type(type)) { hit = name; break; }
+    }
+    closedir(d);
+    return hit;
 }
 
 // 热级状态机（带迟滞）：prev 级、当前温度 t、阈值 t1/t2、迟滞 hyst

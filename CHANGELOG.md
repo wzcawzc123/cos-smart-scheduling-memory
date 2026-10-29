@@ -3,6 +3,56 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.39.0（versionCode 3900）— 漂移重写守护 + 温度源治理 + WebUI 异步真正落地
+
+### 核心：厂商会改写我方夹频（本机实测）
+- 实测（一加11 / ColorOS 16）：不干预时 `policy0.scaling_max_freq` 自己就在
+  `2016000 / 1785600 / 1459200` 之间摆动；写入 1670400 后 3 秒内被改回。三簇
+  （policy0/3/7）均如此 —— **一次性写 `scaling_max_freq` 在 ColorOS 上形同虚设**。
+- 新增 **漂移重写守护（drift reconcile）**：策略未变的空闲节拍上读回核对
+  我方要求约束的标量节点（`maxF0/maxF3/maxF7`、`minFreq`、`uagSoft`、`uclamp*`），
+  仅在**真漂移**时重写，零漂移零写入。
+  - 周期自适应：基础 5s；检出漂移 → 2s 加速抢占；连续 6 轮无漂移退回 5s
+  - 温控/低电守卫优先：`thermalLevel>0` 或电量 <20% 期间不抢写（交回厂商限制）
+  - 可配：`uro.conf` 的 `RECONCILE_MS`（默认 5000，0=关闭）、`RECONCILE_FAST_MS`（默认 2000）
+  - 遥测：`telemetry.jsonl` 增 `{"reconcile":1,"drift":N,"total":M}`；事件日志 `RECONCILE drift=...`
+- 顺带修正：`applyScalar` 写入前按**簇硬件上限**（`cpuinfo_max_freq`）clamp，
+  避免配方写超上限被内核 EINVAL 静默丢弃（例如把 2803200 写给只有 2016000 的小核簇）。
+
+### 修复：温度源原来是“功放”不是 SoC
+- `thermal_zone0` 在本机 type 是 `pa`（功放温度）。旧实现扫全部 zone 取最大值，
+  会混入 battery / shell_front / wireless / 未校准(-273000) 等传感器 → 热级误判。
+- 现在只采纳 SoC 类传感器（`cpuss-*` / `cpu-*-*` / `gpuss-*`）并过滤无效值；
+  无此类命名时回退旧行为。`ThermalPlaceholder` 改为按 type 探测（本机命中
+  `thermal_zone36` = `cpu-1-1`）。
+
+### 修复：WebUI 桥“异步优先”其实没生效
+- v0.38.0 更新说明称已改为 `execAsync` 优先，但 `detectBridge()` 原顺序是先遍历
+  `[ksu, WebUIX, mmrl]` 找同步 `exec`，`execAsync` 永远轮不到 —— 点导航/切档仍卡 1~2s。
+- 已把 `ksu.execAsync` 提到最前（并兼容其他实现的 `execAsync`），同步 `exec` 仅作回退。
+- 模块目录自适应：读 `module.prop` 时依次尝试 `modules/uro`、`modules_update/uro`、
+  `modules/UnifiedRootOptimizer`，改 id / APatch 路径不再显示空版本。
+
+### 增强
+- 看门狗熔断：10 分钟内连续崩溃 5 次 → 退避 5 分钟（避免崩溃循环烧电/刷日志）；
+  稳定存活 180s 清零计数；守护日志与 daemon 日志在常驻循环内滚动（512KB / 2MB）。
+- 内嵌 COSMemory 升到 **v1.3.0**（调参观测窗 / SKIP 分桶 / 看门狗熔断）；
+  打包脚本不再写死版本号，取 `/workspace` 下版本号最高的 `COSMemory_v*.zip`。
+
+### 已知限制
+- `scaling_max_freq` 的“向上抬升”仍属抢写：ColorOS 改写比 2s 更快时只能部分生效。
+  需要**稳定上限**时优先用 `uag/soft_limit_freq`（实测写入 12s 不被改写）；
+  要更激进可把 `RECONCILE_FAST_MS` 调到 1000（会增加与厂商调度的对抗耗电）。
+- 三簇仍按 `policy0/3/7` 命名（本机实测簇为 cpu0-2 / cpu3-6 / cpu7），跨 SoC 自动聚类留待下一版。
+
+## v0.38.0（versionCode 3800）— WebUI 桥改异步（宣称）
+- 更新说明：`ksu.execAsync` 优先、`exec` 仅作回退；实际 `detectBridge` 顺序写反（v0.39.0 修复）
+- WebUI 单文件化 + 启动骨架屏
+
+## v0.37.0（versionCode 3700）— 看板白屏修复
+- `app.js` 裸用 `ref()`（应为 `R()`）导致 setup 抛错、Vue 挂载中断、`.page` 拿不到 `on` 类而整页隐藏
+- WebUI 单文件化（内联 Vue + uPlot + CSS + JS，零外部依赖）
+
 ## v0.36.0（versionCode 3600）— GPU 补全 + uclamp + 配方编辑器
 - **GPU 补到 7/9 节点**：新增 `thermal_pwrlevel`（温控档位）、`min_clock_mhz`、`max_clock_mhz`
   · 复用 v0.33 的通用 applyPwr（写入/回基线/幂等/dry-run）

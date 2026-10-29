@@ -6,12 +6,12 @@ ui_print "- UnifiedRootOptimizer v0.16+ / COSMemory 联动检查"
 if [ -d /data/adb/modules/COSMemory ]; then
     ui_print "- COSMemory 已安装，跳过联装"
 else
-    CMZIP="$MODPATH/cosmemory/COSMemory_v1.2.2.zip"
-    if [ -f "$CMZIP" ]; then
+    CMZIP=$(ls "$MODPATH"/cosmemory/COSMemory_v*.zip 2>/dev/null | head -1)
+    if [ -n "$CMZIP" ] && [ -f "$CMZIP" ]; then
         KSU_BIN="$(command -v ksud 2>/dev/null)"
         [ -z "$KSU_BIN" ] && KSU_BIN=/data/adb/ksu/bin/ksud
         if [ -x "$KSU_BIN" ] && "$KSU_BIN" module install "$CMZIP" >/dev/null 2>&1; then
-            ui_print "- COSMemory v1.2.2 已随装（重启后生效）"
+            ui_print "- COSMemory $(basename "$CMZIP" .zip) 已随装（重启后生效）"
         else
             ui_print "! COSMemory 自动联装失败：可手动刷入 $MODPATH/cosmemory/ 内的包"
         fi

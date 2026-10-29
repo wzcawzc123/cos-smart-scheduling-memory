@@ -13,20 +13,39 @@
   var URO = '/sdcard/Android/UnifiedRootOptimizer';
   var LOG = URO + '/log';
   var MOD = '/data/adb/modules/uro';
+  // v0.39：模块目录自适应（APatch 路径 / modules_update / 改 id 时仍能读到 module.prop）
+  var MOD_GUESS = 'for d in /data/adb/modules/uro /data/adb/modules_update/uro ' +
+                  '/data/adb/modules/UnifiedRootOptimizer; do [ -f "$d/module.prop" ] && { echo "$d"; break; }; done';
   var APPOPT = '/data/adb/modules/AppOpt/applist.conf';
   var PROF = URO + '/app_profiles.txt';
 
   function detectBridge() {
     var w = globalThis;
+    // v0.39 修复：异步优先。ksu.exec 是同步阻塞接口，调用期间 JS 线程完全停住
+    // （点击导航/切档要等 1~2s）。v0.38 的更新说明声称已改为 execAsync 优先，
+    // 但这里原来的顺序是先遍历 [ksu, WebUIX, mmrl] 找同步 exec，execAsync 永远轮不到。
+    if (w.ksu && typeof w.ksu.execAsync === 'function') {
+      return { exec: function (c) {
+        return new Promise(function (res, rej) {
+          try { w.ksu.execAsync(c, function (r) { res(String(r == null ? '' : r)); }); }
+          catch (e) { rej(e); }
+        });
+      } };
+    }
     var o, i, list = [w.ksu, w.WebUIX, w.mmrl];
     for (i = 0; i < list.length; i++) {
       o = list[i];
+      if (o && typeof o.execAsync === 'function') {
+        return { exec: function (c) {
+          return new Promise(function (res, rej) {
+            try { o.execAsync(c, function (r) { res(String(r == null ? '' : r)); }); }
+            catch (e) { rej(e); }
+          });
+        } };
+      }
       if (o && typeof o.exec === 'function') {
         return { exec: function (c) { return Promise.resolve(o.exec(c)).then(function (r) { return String(r == null ? '' : r); }); } };
       }
-    }
-    if (w.ksu && typeof w.ksu.execAsync === 'function') {
-      return { exec: function (c) { return new Promise(function (res, rej) { try { w.ksu.execAsync(c, function (r) { res(String(r == null ? '' : r)); }); } catch (e) { rej(e); } }); } };
     }
     return null;
   }
@@ -141,7 +160,7 @@
   function sed(script) { return "sed -n '" + script + "'"; }
   var CMDT = {
     // 状态（5s 档，轻）
-    prop: 'cat ' + MOD + '/module.prop 2>/dev/null',
+    prop: 'cat $( ' + MOD_GUESS + ' )/module.prop 2>/dev/null',   // v0.39 路径自适应
     conf: 'cat ' + URO + '/uro.conf 2>/dev/null',
     mode: 'cat ' + URO + '/mode.txt 2>/dev/null',
     bridge: 'cat ' + LOG + '/bridge.state 2>/dev/null',

@@ -693,6 +693,7 @@ private:
     struct ScalarNode {
         std::string path, tag;
         int  base = -1;
+        int  capMax = -1;   // v0.39：该节点所在簇的硬件上限（写超上限会被内核 EINVAL 静默丢弃）
         bool wrote = false;
         int  last = -1;
     };
@@ -704,9 +705,12 @@ private:
         scalarsInit_ = true;
         for (const char* pol : {"policy0", "policy3", "policy7"}) {
             std::string base = std::string("/sys/devices/system/cpu/cpufreq/") + pol;
+            int capMax = -1;   // v0.39：该簇硬件上限，用于写入前 clamp
+            if (auto v = ad.read(base + "/cpuinfo_max_freq")) capMax = atoi(v->c_str());
             auto add = [&](const std::string& p, const char* tag) {
                 if (!ad.exists(p)) return;
                 ScalarNode n; n.path = p; n.tag = tag;
+                n.capMax = capMax;
                 if (auto v = ad.read(p)) n.base = atoi(v->c_str());
                 scalars_.push_back(n);
             };
@@ -734,12 +738,14 @@ private:
     void applyScalar(SysfsAdapter& ad, int want, const char* tag, bool dryRun, std::string& d) {
         for (auto& n : scalars_) {
             if (n.tag != tag) continue;
-            if (want >= 0) {
-                if (n.wrote && want == n.last) continue;
+            int w = want;
+            if (w >= 0 && n.capMax > 0 && w > n.capMax) w = n.capMax;   // v0.39：按簇硬件上限 clamp
+            if (w >= 0) {
+                if (n.wrote && w == n.last) continue;
                 if (dryRun) { d += std::string(tag) + "=dry "; continue; }
-                ad.write(n.path, std::to_string(want), false, nullptr);
-                n.wrote = true; n.last = want;
-                d += n.tag + "=" + std::to_string(want) + " ";
+                ad.write(n.path, std::to_string(w), false, nullptr);
+                n.wrote = true; n.last = w;
+                d += n.tag + "=" + std::to_string(w) + " ";
             } else if (n.wrote) {
                 if (dryRun) { d += std::string(tag) + "=drybase "; continue; }
                 ad.write(n.path, std::to_string(n.base), false, nullptr);
@@ -748,9 +754,44 @@ private:
             }
         }
     }
-};
 
-// ========================== GPU / Thermal 占位（M2′）==========================
+    // v0.39 漂移守护（实测依据：一加11 上 policy0 的 scaling_max_freq 会在
+    // 2016000/1785600/1459200 之间被厂商周期改写，一次性写入数秒即失效）。
+    // 只核对"我方当前要求约束"的标量节点；want<0 表示不干预，不参与漂移判定。
+    // 返回漂移节点数（0=一致）；重写使用 applyScalar 的同值幂等路径。
+    int reconcile(const EffectivePolicy& eff, SysfsAdapter& ad, bool dryRun,
+                  std::string& d) override {
+        if (r_.state != CtrlState::Active) return 0;
+        int drift = 0;
+        auto fix = [&](int want, const char* tag) {
+            if (want < 0) return;
+            for (auto& n : scalars_) {
+                if (n.tag != tag) continue;
+                int w = want;
+                if (n.capMax > 0 && w > n.capMax) w = n.capMax;   // 与 applyScalar 同口径
+                auto v = ad.read(n.path);
+                if (!v) continue;
+                if (atoi(v->c_str()) == w) continue;
+                ++drift;
+                if (!dryRun) {
+                    ad.write(n.path, std::to_string(w), false, nullptr);
+                    n.wrote = true; n.last = w;
+                }
+                d += std::string(tag) + "(" + std::to_string(atoi(v->c_str())) +
+                     "->" + std::to_string(w) + ") ";
+            }
+        };
+        fix(eff.cpu.maxFreq,   "maxF0");
+        fix(eff.cpu.maxFreq3,  "maxF3");
+        fix(eff.cpu.maxFreq7,  "maxF7");
+        fix(eff.cpu.minFreq,   "minFreq");
+        fix(eff.cpu.uagSoftLimitK, "uagSoft");
+        fix(eff.cpu.uclampMin, "uclampMin");
+        fix(eff.cpu.uclampMax, "uclampMax");
+        fix(eff.cpu.uclampRt,  "uclampRt");
+        return drift;
+    }
+};
 // §9 M2′：GPU/Thermal 仅留接口占位——类在、接口在、恒 Degraded(placeholder)，
 // 不参与求交（registry.resolve 跳过 Degraded），实现留给 M2/M4。
 class GpuController final : public Controller {
@@ -877,10 +918,13 @@ public:
         // 参数在 uro.conf：THERMAL_ENABLE / THERMAL_T1 / THERMAL_T2
         // 本执行器保留为架构落点（§5.4 T-INT 若要输出 CPU/GPU max clamp，落点在此）；
         // 当前职责 = 把热状态暴露到 registry.status（只读观测，恒 Degraded 不参与求交）。
-        hasZone_ = ad.exists("/sys/class/thermal/thermal_zone0/temp");
+        // v0.39：按 type 找 SoC 传感器（旧实现假定 zone0，本机 zone0 其实是 "pa" 功放温度）
+        socZone_ = find_soc_zone("/sys/class/thermal");
+        hasZone_ = !socZone_.empty();
         r_ = {CtrlState::Degraded,
-              hasZone_ ? "observer-only: thermal=Policy(档位回退)+Evidence(thermal.jsonl); conf=uro.conf THERMAL_T1/T2"
-                       : "no thermal zone — observer skipped"};
+              hasZone_ ? ("observer-only: soc=" + socZone_ +
+                          " thermal=Policy(档位回退)+Evidence(thermal.jsonl); conf=uro.conf THERMAL_T1/T2")
+                       : "no SoC thermal zone — observer skipped"};
         return r_;
     }
     void on_event(const Event& e, const GlobalState& st) override {
@@ -899,6 +943,7 @@ public:
 private:
     CtrlReport r_{CtrlState::Probing, ""};
     bool hasZone_ = false;
+    std::string socZone_;
     int  level_ = 0;
 };
 

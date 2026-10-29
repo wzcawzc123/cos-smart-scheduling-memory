@@ -33,9 +33,25 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         if f.is_file():
             z.write(f, "webroot/assets/" + f.name)
     # COSMemory 内嵌包（联动装；缺失仅降级提示不阻断）
-    cm = pathlib.Path("/workspace/COSMemory_v1.2.2.zip")
-    if cm.exists():
-        z.write(cm, "cosmemory/COSMemory_v1.2.2.zip")
+    # v0.39：不再写死版本号 —— 取 /workspace 下版本号最高的 COSMemory_v*.zip，
+    # 并排除 _fixed/_final 之类临时产物（与正式版同号，容易混）。
+    def newest(pattern):
+        best = None; bestkey = ()
+        for p in pathlib.Path("/workspace").glob(pattern):
+            if not p.is_file() or "_fixed" in p.name or "_final" in p.name:
+                continue
+            m = re.search(r"v(\d+(?:\.\d+)*)", p.name)
+            if not m:
+                continue
+            key = tuple(int(x) for x in m.group(1).split("."))
+            if key >= bestkey:
+                best, bestkey = p, key
+        return best
+
+    cm = newest("COSMemory_v*.zip")
+    if cm:
+        z.write(cm, "cosmemory/" + cm.name)
+        print(f"embed COSMemory: {cm.name}")
     else:
         print("WARN: 内嵌 COSMemory 包缺失 -> 联动降级")
     # AppOpt 内嵌包（GPL3.0 · 原创 SutoLiu · 仅再分发官方原版，不含修改）
@@ -51,4 +67,4 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         i = z.getinfo(n)
         i.external_attr = 0o755 << 16
 
-print(f"built {out} ({out.stat().st_size} bytes) v{version}")
+print(f"built {out} ({out.stat().st_size} bytes) {version}")
