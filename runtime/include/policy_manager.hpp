@@ -177,9 +177,12 @@ public:
     }
     // 应用画像：匹配前台包名 → 覆盖 uag 参数；GAME（让权）与 POWER_SAVE（熄屏省电）
     // 不应用——画像不能破解让权与省电这两个安全档（其余档位均可覆盖，CT 同款语义）
-    void apply_profile(Decision& d, const std::string& pkg) const {
+    // v0.41.2（复审 P2-02）：safetyCapped=true 时不得覆盖任何参数 ——
+    // 电量/热夹档是安全底线，画像不能把它们再"调回去"。
+    void apply_profile(Decision& d, const std::string& pkg, bool safetyCapped) const {
         if (profilePath_.empty() || pkg.empty()) return;
         if (d.scenario == Scenario::GAME || d.scenario == Scenario::POWER_SAVE) return;
+        if (safetyCapped) return;
         std::ifstream f(profilePath_);
         if (!f.is_open()) return;          // 文件缺失 → 无画像（降级）
         std::string line;
@@ -260,7 +263,7 @@ public:
         d.thermalCapped = thermalCapped_; thermalCapped_ = false;
         d.powerCapped = pGuardCapped_; pGuardCapped_ = false;
         d.tactics = tactics_for(cand, st);
-        apply_profile(d, st.foregroundPackage);   // App 画像：通配符覆盖（画像 > 档位 > 基线）
+        apply_profile(d, st.foregroundPackage, pGuardCapped_ || thermalCapped_);   // App 画像：通配符覆盖（画像 > 档位 > 基线）
 
         // --- generation：实质变化才 +1（§4.4 单调，幂等重放不产生新代）---
         // v0.41（审查 F-01）：改用完整策略指纹比较，任何影响执行的字段变化都会触发下发

@@ -1,9 +1,9 @@
 #!/system/bin/sh
-pgrep -f power_sampler.sh >/dev/null 2>&1 || setsid sh /data/adb/modules/uro/bin/power_sampler.sh >/dev/null 2>&1 &
+MODDIR=$(dirname "$0")   # v0.41.2（复审 P3-02）：先定位模块目录，避免写死 /data/adb/modules/uro
+pgrep -f power_sampler.sh >/dev/null 2>&1 || { setsid sh "$MODDIR/bin/power_sampler.sh" >/dev/null 2>&1 & }
 # uro/service.sh — 开机自启 + watchdog（M4 阶段A）
 # 职责：boot 完成后拉起 URORuntime；进程死亡 30s 内补拉。
 # 崩溃残留恢复不在这里做 —— URORuntime 自身 probe 时读 bridge.state 的 DIRTY=1 并恢复基线。
-MODDIR=$(dirname "$0")
 BB=""
 for c in /data/adb/ksu/bin/busybox /data/adb/magisk/busybox /data/adb/ap/bin/busybox; do
   [ -x "$c" ] && { BB=$c; break; }
@@ -84,8 +84,12 @@ while :; do
   fi
   # v0.41（审查 F-05）：把恢复快照同步到模块目录，卸载时即便 /sdcard 不可用也能归还
   mkdir -p "$MODDIR/state" 2>/dev/null
-  for f in bridge.state cpu.state; do
-    [ -f "$LOGDIR/$f" ] && cp -f "$LOGDIR/$f" "$MODDIR/state/$f" 2>/dev/null
+  # v0.41.2（复审 P2-04）：先写 .tmp 再 rename，避免卸载时读到半截快照；
+  # 同时同步写入台账（cpu.dirty/gpu.dirty/thread.state），供强杀/卸载兜底恢复
+  for f in bridge.state cpu.state cpu.dirty gpu.dirty thread.state; do
+    [ -f "$LOGDIR/$f" ] || continue
+    cp -f "$LOGDIR/$f" "$MODDIR/state/$f.tmp" 2>/dev/null && \
+      mv -f "$MODDIR/state/$f.tmp" "$MODDIR/state/$f" 2>/dev/null
   done
   sleep 30
 done

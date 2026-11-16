@@ -63,6 +63,9 @@ public:
 
     // v0.40 退出清理：进程结束前撤销"粘滞"副作用（如 sched_setaffinity 绑定）
     virtual void shutdown() {}
+
+    // v0.41.2（复审 P1-02）：启动时恢复上次崩溃/强杀遗留的节点改动（读持久台账）
+    virtual void recover_pending() {}
 };
 
 using ControllerPtr = std::unique_ptr<Controller>;
@@ -74,10 +77,12 @@ ControllerPtr make_memory_controller(const std::string& policyFile = "",
                                      const std::string& cmosJson = "",
                                      const std::string& stateFile = "");
 // cpuStateFile = uag 参数基线档案路径（空 = 不接管 uag 参数）
-ControllerPtr make_cpu_controller(const std::string& cpuStateFile = "");
+ControllerPtr make_cpu_controller(const std::string& cpuStateFile = "",
+                                  const std::string& dirtyFile = "");
 struct FgShared;   // 完整定义在 drivers.hpp
-ControllerPtr make_thread_controller(std::shared_ptr<FgShared> fg);   // v0.40 线程亲和（Uperf 式）
-ControllerPtr make_gpu_placeholder();
+ControllerPtr make_thread_controller(std::shared_ptr<FgShared> fg,
+                                    const std::string& stateFile = "");   // v0.40 线程亲和（Uperf 式）
+ControllerPtr make_gpu_placeholder(const std::string& dirtyFile = "");
 ControllerPtr make_thermal_placeholder();
 
 // 集中注册：probe 全部（逐个 try，单个降级不影响其他），按边界事件 apply。

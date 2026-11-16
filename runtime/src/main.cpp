@@ -198,11 +198,15 @@ int main(int argc, char** argv) {
     reg.add(make_memory_controller(std::string(logdir) + "/policy.memory.txt",
                                    "/data/adb/modules/COSMemory/config/memory.json",
                                    std::string(logdir) + "/bridge.state"));
-    reg.add(make_cpu_controller(std::string(logdir) + "/cpu.state"));
-    reg.add(make_thread_controller(fg));   // v0.40 线程亲和（对齐 Uperf）
-    reg.add(make_gpu_placeholder());
+    // v0.41.2（复审 P1-02）：写入台账路径 —— 崩溃/强杀后据此回滚
+    reg.add(make_cpu_controller(std::string(logdir) + "/cpu.state",
+                                std::string(logdir) + "/cpu.dirty"));
+    reg.add(make_thread_controller(fg, std::string(logdir) + "/thread.state"));   // v0.40 线程亲和（对齐 Uperf）
+    reg.add(make_gpu_placeholder(std::string(logdir) + "/gpu.dirty"));
     reg.add(make_thermal_placeholder());
     auto probeReps = reg.probe_all(ad);
+    // v0.41.2（复审 P1-02）：先把上次崩溃遗留的写入恢复掉，再开始本轮策略
+    for (size_t i = 0; i < reg.size(); ++i) reg.at(i).recover_pending();
     EventLog plog(std::string(logdir) + "/policy.log");
     for (size_t i = 0; i < probeReps.size(); ++i) {
         std::string line = "PROBE ctrl=" + std::string(reg.at(i).name()) +
@@ -526,7 +530,7 @@ int main(int argc, char** argv) {
         run_policy(e, e.ts_ms);
 
         char ts[32];
-        time_t s = e.ts_ms / 1000; struct tm tmv{};
+        time_t s = (time_t)wall_s(); struct tm tmv{};   // 复审 P2-01：日志展示用墙钟，不用单调时钟
         localtime_r(&s, &tmv);
         strftime(ts, sizeof ts, "%F %T", &tmv);
         char pl[8];

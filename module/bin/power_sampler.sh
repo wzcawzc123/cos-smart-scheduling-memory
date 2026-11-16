@@ -13,6 +13,12 @@ while true; do
         sz=$(stat -c %s "$L/power.jsonl" 2>/dev/null || echo 0)
         [ "$sz" -gt 1048576 ] && mv -f "$L/power.jsonl" "$L/power.jsonl.1"
     fi
-    [ -n "$pct" ] && echo "{\"ts\":$ts,\"pct\":$pct,\"chg\":\"$st\",\"mA\":$ma}" >> $L/power.jsonl
+    # v0.41.2（复审 P3-01）：数字字段做校验，读不到用 null（原来会输出非法 JSON）；
+    # 字段改名 current_now_raw —— 不同内核单位不同，不假定是 mA
+    if [ -n "$pct" ]; then
+        case "$ma" in ''|*[!0-9-]*) ma_json=null ;; *) ma_json=$ma ;; esac
+        case "$pct" in ''|*[!0-9]*) pct_json=null ;; *) pct_json=$pct ;; esac
+        echo "{\"ts\":$ts,\"pct\":$pct_json,\"chg\":\"$st\",\"current_now_raw\":$ma_json}" >> $L/power.jsonl
+    fi
     sleep 60
 done

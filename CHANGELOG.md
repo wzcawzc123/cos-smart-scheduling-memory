@@ -3,6 +3,58 @@
 版本规范：`大.中.小`——功能迭代升第二位、小修升第三位、大重构升第一位；versionCode 每次 +1。
 发布件归档：`/storage/emulated/0/性能调度模块/`（新包根目录，旧包挪 `旧版/`）。
 
+## v0.41.2（versionCode 4102）— 按复审报告修复"跨进程/跨卸载恢复"问题
+
+复审（针对 v0.41.1）共 9 条，**逐条核对后 9 条全部属实**，本版全部处理。
+
+### P1（发布前必修）
+
+**P1-01 线程亲和原始值跨崩溃丢失 / TID 复用**
+- 新增 `thread.state` 持久台账：`pid tid starttime origmask`，**首次改动前落盘**（不等退出）
+- 恢复前校验 `/proc/<pid>/stat` 的 starttime 与 `/proc/<tid>/status` 的 Tgid，
+  进程换代或 TID 被复用则丢弃记录，不误伤无关线程
+- "当前已是目标值却无记录"（崩溃遗留）不再猜成目标值，而是按全核保守处理
+- 恢复失败保留记录（恢复债务），下轮/下次启动继续
+- 实测：绑核 3-7 → `kill -9` → 改 `threadPin=0` 重启 → 回到 0-7，记录清空
+
+**P1-02 退出未统一恢复 CPU/GPU 标量**
+- 新增写入台账 `cpu.dirty` / `gpu.dirty`（path / base / target），写入成功即落盘
+- 启动时（probe 后）先 `recover_pending()` 回滚上次遗留，再应用新策略
+- `CpuController::shutdown()` 补齐：标量（maxF/minF/soft/uclamp）+ cpuset 全部归还
+- `GpuController` 新增 `shutdown()`：10 个 KGSL 节点按 `wrote` 状态逐项回基线
+- 恢复只在"当前值仍等于我方目标值"时执行，不覆盖其他模块/系统后来写的值
+- 实测：`uagSoftK=1500000` 三簇写入 → `kill -9` → 重启 → 恢复 2016000/2803200/3187200，台账清空
+
+**P2-03 旁支写入结果未检查**
+- GPU `idle_timer`、cpuset 关闭策略、`reconcile` 的标量/cpuset 重写全部改为
+  `WriteOutcome::Ok` 才更新状态与成功日志；失败标 `FAIL(...)`、保留 dirty 重试
+
+### P2
+
+- **P2-01 事件日志把单调时钟当日历时间**：`events.log` 改用 `wall_s()`，与 telemetry 一致
+  （实测日志时间为设备当前时间，不再是 1970 附近）
+- **P2-02 画像可覆盖安全夹档**：`apply_profile()` 新增 `safetyCapped`，电量/热夹档期间
+  完全不应用画像（安全底线优先）
+- **P2-04 卸载快照过期 / cpu.state 未用**：快照改为 `.tmp` + `rename` 原子替换；
+  卸载时两处快照**取 mtime 较新者**；新增按 `cpu.dirty`/`gpu.dirty` 台账回滚；
+  `thread.state` 存在时明确提示"需重启恢复"
+
+### P3
+
+- **P3-01 电量 JSON 非法 + 单位未证**：`ma`/`pct` 做数值校验，缺失写 `null`；
+  字段改名 `current_now_raw`（不再假装是 mA）
+- **P3-02 采样脚本路径硬编码**：`service.sh` 用 `MODDIR` 构造，不再写死 `/data/adb/modules/uro`
+- **P3-03 过时注释**：GPU 类注释由"仅占位"改为"已实现执行器"，Thermal 明确 observer-only
+
+### 顺带发现（新问题，非审查提出）
+- 本机 `/proc/sys/kernel/sched_util_clamp_max` **写入被拒**（写 800 读回 1024），
+  说明 v0.36 声称的 uclamp 接入在本机实际从未生效 —— 已记入待办，下一版要么改用
+  cgroup `cpu.uclamp.max`（per-cgroup 才可写），要么明确标注"本机不支持"。
+
+### 测试与验证
+- host 测试 **335 断言 0 失败**（含指纹 10 条、cpuset 6 条）
+- 真机：线程绑核/强杀/重启恢复、CPU 台账强杀恢复、事件日志墙钟、cpuset 写入与还原
+
 ## v0.41.1（versionCode 4101）— 发布包合规补齐（调度逻辑零改动）
 
 上一版检查发布包时发现三处"不是脏东西、而是缺东西"的问题，本版补齐：

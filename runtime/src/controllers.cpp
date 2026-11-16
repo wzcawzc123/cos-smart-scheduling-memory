@@ -46,6 +46,55 @@ static std::string cpuset_str(int mask) {
     return out;
 }
 
+// v0.41.2（复审 P1-02）：写入台账 —— 进程被强杀/崩溃后仍能把节点改回基线，
+// 不再依赖内存里的 wrote 标志。每个控制器一份文件（cpu.dirty / gpu.dirty）：
+//   path<TAB>base<TAB>target
+struct DirtySet {
+    std::string file;
+    std::map<std::string, std::pair<std::string, std::string>> m;
+    explicit DirtySet(std::string f = "") : file(std::move(f)) {}
+    void flush() {
+        if (file.empty()) return;
+        std::ofstream f(file, std::ios::trunc);
+        for (auto& kv : m)
+            f << kv.first << '\t' << kv.second.first << '\t' << kv.second.second << '\n';
+    }
+    void note(const std::string& p, const std::string& base, const std::string& target) {
+        if (file.empty()) return;
+        m[p] = {base, target};
+        flush();
+    }
+    void forget(const std::string& p) { if (m.erase(p)) flush(); }
+    // 恢复：仅当节点当前值仍等于"我方目标值"才写回基线（不覆盖外部新值）；
+    // 失败项留在文件里作为恢复债务，下次启动继续尝试。
+    int recover(SysfsAdapter& ad) {
+        if (file.empty()) return 0;
+        std::ifstream in(file);
+        if (!in.is_open()) return 0;
+        std::map<std::string, std::pair<std::string, std::string>> loaded;
+        std::string line;
+        while (std::getline(in, line)) {
+            auto t1 = line.find('\t');
+            if (t1 == std::string::npos) continue;
+            auto t2 = line.find('\t', t1 + 1);
+            if (t2 == std::string::npos) continue;
+            loaded[line.substr(0, t1)] = {line.substr(t1 + 1, t2 - t1 - 1), line.substr(t2 + 1)};
+        }
+        in.close();
+        int n = 0;
+        m.clear();
+        for (auto& kv : loaded) {
+            auto cur = ad.read(kv.first);
+            if (!cur) continue;
+            if (*cur != kv.second.second) continue;
+            if (ad.write(kv.first, kv.second.first, false, nullptr) == WriteOutcome::Ok) ++n;
+            else m[kv.first] = kv.second;
+        }
+        flush();
+        return n;
+    }
+};
+
 // ============================ Memory Controller ============================
 // §5.1 基于 COSMemory：KeepAlive/Reclaim/Freeze 保留；快照由 Event Collector 共享。
 // M2′ 阶段只落"接口 + 降级"，策略细节归 M3。
@@ -439,8 +488,8 @@ private:
 class CpuController final : public Controller {
 public:
     // cpuStateFile：uag 参数基线档案（UPRATE:<policy>=<值> / DIRTY），空 = 不接管 uag
-    explicit CpuController(std::string cpuStateFile = "")
-        : stateFile_(std::move(cpuStateFile)) {}
+    explicit CpuController(std::string cpuStateFile = "", std::string dirtyFile = "")
+        : stateFile_(std::move(cpuStateFile)), dirtyLog_(std::move(dirtyFile)) {}
 
     const char* name() const override { return "cpu"; }
 
@@ -586,8 +635,14 @@ public:
                     auto w = cpusetWrote_.find(group);
                     if (w == cpusetWrote_.end() || !w->second) return;
                     auto b = cpusetBase_.find(group);
-                    if (b != cpusetBase_.end() && !b->second.empty() && !dryRun)
-                        ad.write(gp, b->second, false, nullptr);
+                    if (b != cpusetBase_.end() && !b->second.empty() && !dryRun) {
+                        WriteOutcome o = ad.write(gp, b->second, false, nullptr);
+                        if (o != WriteOutcome::Ok) {   // 失败保留 dirty，下次继续还
+                            r.detail += std::string(" ") + group + "=RBFAIL(" + outcome_name(o) + ")";
+                            return;
+                        }
+                        dirtyLog_.forget(gp);
+                    }
                     cpusetWrote_[group] = false;
                     r.detail += std::string(" ") + group + "=base";
                     return;
@@ -601,6 +656,9 @@ public:
                         return;
                     }
                     cpusetWrote_[group] = true;
+                    auto b = cpusetBase_.find(group);
+                    if (b != cpusetBase_.end() && !b->second.empty())
+                        dirtyLog_.note(gp, b->second, val);
                 }
                 r.detail += std::string(" ") + group + "=" + val;
             };
@@ -756,6 +814,7 @@ private:
         int  last = -1;
     };
     std::vector<ScalarNode> scalars_;
+    DirtySet dirtyLog_;                                  // v0.41.2 写入台账（跨崩溃恢复）
     std::map<std::string, std::string> cpusetBase_;   // v0.40 组 → 原始 cpus 文本
     std::map<std::string, bool> cpusetWrote_;         // v0.40 组 → 我方是否写过
     bool scalarsInit_ = false;
@@ -807,6 +866,7 @@ private:
                 WriteOutcome o = ad.write(n.path, std::to_string(w), false, nullptr);
                 if (o != WriteOutcome::Ok) { d += n.tag + "=FAIL(" + outcome_name(o) + ") "; continue; }
                 n.wrote = true; n.last = w;
+                dirtyLog_.note(n.path, std::to_string(n.base), std::to_string(w));
                 d += n.tag + "=" + std::to_string(w) + " ";
             } else if (n.wrote) {
                 if (dryRun) { d += std::string(tag) + "=drybase "; continue; }
@@ -837,8 +897,14 @@ private:
                 if (atoi(v->c_str()) == w) continue;
                 ++drift;
                 if (!dryRun) {
-                    ad.write(n.path, std::to_string(w), false, nullptr);
-                    n.wrote = true; n.last = w;
+                    WriteOutcome o = ad.write(n.path, std::to_string(w), false, nullptr);
+                    if (o == WriteOutcome::Ok) {
+                        n.wrote = true; n.last = w;
+                        dirtyLog_.note(n.path, std::to_string(n.base), std::to_string(w));
+                    } else {
+                        d += std::string(tag) + "=FAIL(" + outcome_name(o) + ") ";
+                        continue;
+                    }
                 }
                 d += std::string(tag) + "(" + std::to_string(atoi(v->c_str())) +
                      "->" + std::to_string(w) + ") ";
@@ -865,7 +931,15 @@ private:
             for (char c : *v) if (!isspace((unsigned char)c)) cur += c;
             if (cur == want) return;
             ++drift;
-            if (!dryRun) ad.write(gp, want, false, nullptr);
+            if (!dryRun) {
+                WriteOutcome o = ad.write(gp, want, false, nullptr);
+                if (o != WriteOutcome::Ok) {
+                    d += std::string("cs:") + group + "=FAIL(" + outcome_name(o) + ") ";
+                    return;
+                }
+                auto b = cpusetBase_.find(group);
+                if (b != cpusetBase_.end() && !b->second.empty()) dirtyLog_.note(gp, b->second, want);
+            }
             d += std::string("cs:") + group + "(" + cur + "->" + want + ") ";
         };
         chkGroup("top-app", eff.cpu.cpusetTopMask);
@@ -875,22 +949,36 @@ private:
     }
 
     // v0.40：cpuset 写入是粘滞的（进程退出不会自动还原）→ 退出时归还基线
+    // v0.41.2（复审 P1-02）：退出/卸载必须把 CPU 侧所有改动一起归还，
+    // 不能只还 cpuset（旧实现漏了 scalars/uag 标量）。
     void shutdown() override {
         SysfsAdapter ad;   // 真实根路径：退出阶段仍需可验证的写入
+        for (auto& n : scalars_) {
+            if (!n.wrote) continue;
+            if (ad.write(n.path, std::to_string(n.base), false, nullptr) == WriteOutcome::Ok) {
+                n.wrote = false; n.last = n.base;
+                dirtyLog_.forget(n.path);
+            }
+        }
         for (auto& kv : cpusetWrote_) {
             if (!kv.second) continue;
             auto b = cpusetBase_.find(kv.first);
             if (b == cpusetBase_.end() || b->second.empty()) continue;
             std::string gp = std::string("/dev/cpuset/") + kv.first + "/cpus";
-            // v0.41（审查 F-06）：只有写入且回读一致才清除 dirty，失败保留待重试
-            if (ad.write(gp, b->second, false, nullptr) == WriteOutcome::Ok) kv.second = false;
+            if (ad.write(gp, b->second, false, nullptr) == WriteOutcome::Ok) {
+                kv.second = false;
+                dirtyLog_.forget(gp);
+            }
         }
+        dirtyLog_.recover(ad);   // 兜底：处理上次崩溃遗留（仅当当前值仍等于我方目标）
     }
+    void recover_pending() override { SysfsAdapter ad; dirtyLog_.recover(ad); }
 };
 // §9 M2′：GPU/Thermal 仅留接口占位——类在、接口在、恒 Degraded(placeholder)，
 // 不参与求交（registry.resolve 跳过 Degraded），实现留给 M2/M4。
 class GpuController final : public Controller {
 public:
+    explicit GpuController(std::string dirtyFile = "") : dirtyLog_(std::move(dirtyFile)) {}
     const char* name() const override { return "gpu"; }
     CtrlReport probe(SysfsAdapter& ad) override {
         hasIdle_     = ad.exists(kIdle);
@@ -934,7 +1022,13 @@ public:
         // ---- idle_timer（v0.22 行为参数：0=不定，不归还）----
         int want = eff.gpu.idleTimer;
         if (want > 0 && want != lastIdle_) {
-            if (!dryRun) ad.write(kIdle, std::to_string(want), false, nullptr);
+            if (!dryRun) {
+                WriteOutcome o = ad.write(kIdle, std::to_string(want), false, nullptr);
+                if (o != WriteOutcome::Ok) {
+                    d += std::string("idle=FAIL(") + outcome_name(o) + ") ";
+                    return r_;
+                }
+            }
             lastIdle_ = want;
             d += "idle=" + std::to_string(want) + " ";
         }
@@ -971,6 +1065,7 @@ private:
                 return;
             }
             wrote = true; last = want;
+            dirtyLog_.note(path, std::to_string(base), std::to_string(want));
             d += std::string(tag) + "=" + std::to_string(want) + " ";
         } else if (wrote) {
             if (dryRun) { d += std::string(tag) + "=dry(base" + std::to_string(base) + ") "; return; }
@@ -980,9 +1075,32 @@ private:
                 return;
             }
             wrote = false; last = base;
+            dirtyLog_.forget(path);
             d += std::string(tag) + "=base(" + std::to_string(base) + ") ";
         }
     }
+    // v0.41.2（复审 P1-02）：退出时把 GPU 侧写过的节点全部改回基线
+    void shutdown() override {
+        SysfsAdapter ad;
+        auto back = [&](const char* path, bool wrote, int base) {
+            if (!wrote) return;
+            if (ad.write(path, std::to_string(base), false, nullptr) == WriteOutcome::Ok)
+                dirtyLog_.forget(path);
+        };
+        back(kMinPwr, wroteMin_, baseMinPwr_);
+        back(kMaxPwr, wroteMax_, baseMaxPwr_);
+        back(kBusSplit, wroteSplit_, baseBusSplit_);
+        back(kDefPwr, wroteDef_, baseDefPwr_);
+        back(kMinBw, wroteBw_, baseMinBw_);
+        back(kForceClk, wroteFClk_, baseForceClk_);
+        back(kForceBus, wroteFBus_, baseForceBus_);
+        back(kThermalPwr, wroteTPwr_, baseThermalPwr_);
+        back(kMinClk, wroteMinClk_, baseMinClk_);
+        back(kMaxClk, wroteMaxClk_, baseMaxClk_);
+        dirtyLog_.recover(ad);
+    }
+    void recover_pending() override { SysfsAdapter ad; dirtyLog_.recover(ad); }
+
     static constexpr const char* kIdle     = "/sys/class/kgsl/kgsl-3d0/idle_timer";
     static constexpr const char* kMinPwr   = "/sys/class/kgsl/kgsl-3d0/min_pwrlevel";
     static constexpr const char* kMaxPwr   = "/sys/class/kgsl/kgsl-3d0/max_pwrlevel";
@@ -994,6 +1112,7 @@ private:
     static constexpr const char* kThermalPwr = "/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel";
     static constexpr const char* kMinClk = "/sys/class/kgsl/kgsl-3d0/min_clock_mhz";
     static constexpr const char* kMaxClk = "/sys/class/kgsl/kgsl-3d0/max_clock_mhz";
+    DirtySet dirtyLog_;
     CtrlReport r_{CtrlState::Probing, ""};
     int lastIdle_ = -1;
     bool hasIdle_ = false, hasMinPwr_ = false, hasMaxPwr_ = false, hasBusSplit_ = false;
@@ -1056,8 +1175,8 @@ ControllerPtr make_memory_controller(const std::string& policyFile,
                                      const std::string& stateFile) {
     return std::make_unique<MemoryController>(policyFile, cmosJson, stateFile);
 }
-ControllerPtr make_cpu_controller(const std::string& cpuStateFile) {
-    return std::make_unique<CpuController>(cpuStateFile);
+ControllerPtr make_cpu_controller(const std::string& cpuStateFile, const std::string& dirtyFile) {
+    return std::make_unique<CpuController>(cpuStateFile, dirtyFile);
 }
 
 // ==================== v0.40 线程亲和（对齐 Uperf 的 UI 线程绑定）====================
@@ -1067,10 +1186,12 @@ ControllerPtr make_cpu_controller(const std::string& cpuStateFile) {
 // reconcile 返回 0 = 不是"节点漂移"，不会在事件日志刷漂移记录。
 class ThreadController final : public Controller {
 public:
-    explicit ThreadController(FgSharedPtr fg) : fg_(std::move(fg)) {}
+    explicit ThreadController(FgSharedPtr fg, std::string stateFile = "")
+        : fg_(std::move(fg)), file_(std::move(stateFile)) {}
     const char* name() const override { return "thread"; }
 
     CtrlReport probe(SysfsAdapter&) override {
+        load();   // v0.41.2：先把上次崩溃遗留的原始 affinity 记录读进来
         r_ = {CtrlState::Active, "sched_setaffinity ready; threadPin=0（配方开启后才绑核）"};
         return r_;
     }
@@ -1082,23 +1203,21 @@ public:
     CtrlReport apply(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun) override {
         int mask = want_mask(eff);
         if (mask == 0) {
-            restore_all();   // v0.41（F-02）：按原始 mask 精确恢复，而非"全核"了事
-            return {CtrlState::Active, "thread=off restored=" + std::to_string(lastRestored_)};
+            int n = restore_all();
+            return {CtrlState::Active, "thread=off restored=" + std::to_string(n)};
         }
         if (dryRun) return {CtrlState::Active, "thread=DRY " + cpuset_str(mask)};
         curPkg_ = fg_ ? fg_->get() : std::string();
         curMask_ = mask;
-        int n = pin_scan(mask);
+        int n = pin_now(mask);
         return {CtrlState::Active, "thread=" + cpuset_str(mask) + " pinned=" + std::to_string(n)};
     }
 
-    // 线程会重建、App 会切换：借 reconcile 时钟增量校验；
-    // 前台包变化或每 6 轮做一次全量补绑（审查 F-09：避免每轮全量扫描）
     int reconcile(const EffectivePolicy& eff, SysfsAdapter&, bool dryRun, std::string& d) override {
         if (dryRun) return 0;
         int mask = want_mask(eff);
         if (mask == 0) {
-            if (!orig_.empty()) { restore_all(); d += "thread=restored "; }
+            if (!saved_.empty()) { restore_all(); d += "thread=restored "; }
             curPkg_.clear(); curMask_ = 0;
             return 0;
         }
@@ -1106,19 +1225,21 @@ public:
         bool pkgChanged = (pkg != curPkg_);
         bool maskChanged = (mask != curMask_);
         if (pkgChanged || maskChanged) {
-            restore_all();          // 先还原上一个包/上一个掩码的改动
-            curPkg_ = pkg;
-            curMask_ = mask;
+            int n = restore_all();          // 先按原值归还上一批（复审 P1-01）
+            if (n > 0) d += "thread=restored" + std::to_string(n) + " ";
+            curPkg_ = pkg; curMask_ = mask;
         }
-        if (++round_ % 6 == 0 || pkgChanged || maskChanged) pin_scan(mask);
+        if (++round_ % 6 == 0 || pkgChanged || maskChanged) pin_now(mask);
         else pin_check(mask);
         return 0;
     }
 
-    // 进程退出/被卸载前按原始 mask 撤销全部改动
     void shutdown() override { restore_all(); }
+    void recover_pending() override { restore_all(); }   // 启动时回滚上次崩溃遗留
 
 private:
+    struct Rec { long starttime = -1; int orig = -1; };
+
     static int want_mask(const EffectivePolicy& eff) {
         if (!eff.cpu.threadPin) return 0;
         return eff.cpu.threadPinMask >= 0 ? eff.cpu.threadPinMask : 0xF8;
@@ -1132,8 +1253,34 @@ private:
         CPU_ZERO(&s);
         for (int i = 0; i < 31; ++i) if (m & (1 << i)) CPU_SET(i, &s);
     }
+    static int all_mask() {
+        long n = sysconf(_SC_NPROCESSORS_CONF);
+        if (n <= 0) n = 8;
+        if (n > 31) n = 31;
+        return (int)((1u << n) - 1);
+    }
+    // /proc/<pid>/stat 第 22 字段（starttime）：用于识别 TID 是否被复用
+    static long starttime_of(pid_t pid) {
+        std::ifstream f("/proc/" + std::to_string(pid) + "/stat");
+        if (!f.is_open()) return -1;
+        std::string s; std::getline(f, s);
+        auto rp = s.rfind(')');
+        if (rp == std::string::npos) return -1;
+        std::istringstream is(s.substr(rp + 2));
+        std::string tok; int idx = 3;
+        while (is >> tok) { if (idx == 22) return std::atol(tok.c_str()); ++idx; }
+        return -1;
+    }
+    static pid_t tgid_of(pid_t tid) {
+        std::ifstream f("/proc/" + std::to_string(tid) + "/status");
+        std::string k;
+        while (f >> k) {
+            if (k == "Tgid:") { pid_t v = -1; f >> v; return v; }
+        }
+        return -1;
+    }
     static bool want_thread(pid_t tid, pid_t pid, const std::string& tdir, const std::string& name) {
-        if (tid == pid) return true;   // 主线程
+        if (tid == pid) return true;
         std::string comm;
         { std::ifstream f(tdir + "/" + name + "/comm"); std::getline(f, comm); }
         return comm.find("RenderThread") != std::string::npos ||
@@ -1142,13 +1289,29 @@ private:
                comm.find("UnityMain") != std::string::npos;
     }
 
-    // 记录首次改动前的原始 mask（每个 TID 一条），供精确恢复
-    void note_orig(pid_t tid, int origMask) {
-        if (orig_.find(tid) == orig_.end()) orig_[tid] = origMask;
+    void load() {
+        if (loaded_ || file_.empty()) { loaded_ = true; return; }
+        loaded_ = true;
+        std::ifstream in(file_);
+        std::string line;
+        while (std::getline(in, line)) {
+            std::istringstream is(line);
+            long pid, tid, st; int orig;
+            if (!(is >> pid >> tid >> st >> orig)) continue;
+            saved_[{ (pid_t)pid, (pid_t)tid }] = Rec{ st, orig };
+        }
+    }
+    void flush() {
+        if (file_.empty()) return;
+        std::ofstream f(file_, std::ios::trunc);
+        for (auto& kv : saved_)
+            f << kv.first.first << ' ' << kv.first.second << ' ' << kv.second.starttime
+              << ' ' << kv.second.orig << '\n';
     }
 
-    int pin_scan(int mask) {
-        std::string pkg = curPkg_.empty() ? (fg_ ? fg_->get() : std::string()) : curPkg_;
+    int pin_now(int mask) {
+        load();
+        std::string pkg = fg_ ? fg_->get() : std::string();
         if (pkg.empty()) return 0;
         cpu_set_t want; int_to_mask(mask, want);
         int n = 0;
@@ -1162,6 +1325,7 @@ private:
             std::string cmd;
             { std::ifstream f(base + "/cmdline", std::ios::binary); std::getline(f, cmd, '\0'); }
             if (cmd != pkg) continue;
+            long st = starttime_of(pid);
             std::string tdir = base + "/task";
             DIR* td = opendir(tdir.c_str());
             if (!td) continue;
@@ -1174,9 +1338,16 @@ private:
                 cpu_set_t cur;
                 if (sched_getaffinity(tid, sizeof(cur), &cur) != 0) continue;
                 int curm = mask_to_int(cur);
-                if (curm == mask) { note_orig(tid, curm); continue; }   // 已符合也登记，便于退出时还原
-                note_orig(tid, curm);
-                if (sched_setaffinity(tid, sizeof(want), &want) == 0) ++n;
+                auto key = std::make_pair(pid, tid);
+                auto it = saved_.find(key);
+                if (it == saved_.end() || it->second.starttime != st) {
+                    // 复审 P1-01：首次改动前落盘；若当前值已等于目标（上次崩溃遗留）且无记录，
+                    // 不能把它当成原始值 —— 保守按全核，避免"越恢复越绑死"。
+                    int orig = (curm == mask) ? all_mask() : curm;
+                    saved_[key] = Rec{ st, orig };
+                    flush();
+                }
+                if (curm != mask && sched_setaffinity(tid, sizeof(want), &want) == 0) ++n;
             }
             closedir(td);
         }
@@ -1184,45 +1355,59 @@ private:
         return n;
     }
 
-    // 增量校验：只处理已登记且仍存活的线程（不扫 /proc）
     int pin_check(int mask) {
         cpu_set_t want; int_to_mask(mask, want);
         int n = 0;
-        for (auto it = orig_.begin(); it != orig_.end(); ) {
+        for (auto it = saved_.begin(); it != saved_.end(); ) {
+            pid_t pid = it->first.first, tid = it->first.second;
+            if (starttime_of(pid) != it->second.starttime || tgid_of(tid) != pid) {
+                it = saved_.erase(it);
+                continue;
+            }
             cpu_set_t cur;
-            if (sched_getaffinity(it->first, sizeof(cur), &cur) != 0) { it = orig_.erase(it); continue; }
+            if (sched_getaffinity(tid, sizeof(cur), &cur) != 0) { it = saved_.erase(it); continue; }
             if (mask_to_int(cur) != mask) {
-                if (sched_setaffinity(it->first, sizeof(want), &want) == 0) ++n;
+                if (sched_setaffinity(tid, sizeof(want), &want) == 0) ++n;
             }
             ++it;
         }
         return n;
     }
 
-    void restore_all() {
-        int restored = 0;
-        for (auto& kv : orig_) {
-            cpu_set_t s; int_to_mask(kv.second, s);
-            if (sched_setaffinity(kv.first, sizeof(s), &s) == 0) ++restored;
+    int restore_all() {
+        load();
+        int n = 0;
+        for (auto it = saved_.begin(); it != saved_.end(); ) {
+            pid_t pid = it->first.first, tid = it->first.second;
+            if (starttime_of(pid) != it->second.starttime || tgid_of(tid) != pid) {
+                it = saved_.erase(it);   // 进程已换代/TID 已复用 → 不误伤
+                continue;
+            }
+            cpu_set_t s; int_to_mask(it->second.orig, s);
+            if (sched_setaffinity(tid, sizeof(s), &s) == 0) { ++n; it = saved_.erase(it); }
+            else ++it;                   // 失败保留债务，下次再试
         }
-        lastRestored_ = restored;
-        orig_.clear();
+        flush();
+        lastRestored_ = n;
+        return n;
     }
 
     FgSharedPtr fg_;
-    std::map<pid_t, int> orig_;   // tid → 首次改动前的 affinity 位图
+    std::string file_;
+    std::map<std::pair<pid_t, pid_t>, Rec> saved_;   // (pid,tid) → {starttime, 原始 mask}
     std::string curPkg_;
     int curMask_ = 0;
     int round_ = 0;
     int lastRestored_ = 0;
+    bool loaded_ = false;
     CtrlReport r_{CtrlState::Probing, ""};
 };
 
 
-ControllerPtr make_thread_controller(FgSharedPtr fg) {
-    return std::make_unique<ThreadController>(std::move(fg));
+ControllerPtr make_thread_controller(FgSharedPtr fg, const std::string& stateFile) {
+    return std::make_unique<ThreadController>(std::move(fg), stateFile);
 }
-ControllerPtr make_gpu_placeholder()   { return std::make_unique<GpuController>(); }
+ControllerPtr make_gpu_placeholder(const std::string& dirtyFile) { return std::make_unique<GpuController>(dirtyFile); }
 ControllerPtr make_thermal_placeholder(){ return std::make_unique<ThermalPlaceholder>(); }
 
 } // namespace uro
